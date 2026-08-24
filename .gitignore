@@ -1,0 +1,7 @@
+# runtime state - the database, logs and tickerplant logs are all regenerated
+var/
+
+# editor / tooling
+.vscode/
+.claude/
+*.swp
