@@ -79,7 +79,10 @@ loadsym:{[]
                    "stack its own domain name, or share one file. see 8.3.1"]];
     }[f;g] each where 1<count each g;
   };
-symbytes:{[] sum @[hcount;;0] each symfiles[] };
+/ sum of an EMPTY list is () , not 0 - and symsize<>() is () , which fails the $[] in
+/ symchanged with a type error. Seeding with 0 keeps this numeric on a database that has
+/ no sym file yet, which is what a fresh install always looks like.
+symbytes:{[] sum 0,@[hcount;;0] each symfiles[] };
 symchanged:{[] $[symsize<>c:symbytes[];[symsize::c;1b];0b] };
 
 / ---------------------------------------------------------------------------
