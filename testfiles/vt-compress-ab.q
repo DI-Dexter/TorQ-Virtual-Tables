@@ -40,7 +40,7 @@ go:{[dir;files;decompress;run;n;lbl;gate]
   decompress files;
   if[not null gate;
     system"VTCMP_MINFILESIZE=",string[gate]," VTCMP_CONFIG=",getenv[`KDBAPPCONFIG],
-      "/compressionconfig-test.csv ",getenv[`TORQAPPHOME],"/compress.sh > /dev/null 2>&1"];
+      "/testfiles/compressionconfig-test.csv ",getenv[`TORQAPPHOME],"/compress.sh > /dev/null 2>&1"];
   c:sum {0<count -21!x} each files;
   a:"J"$first system "du -sk ",dir," | cut -f1";
   r:run n;

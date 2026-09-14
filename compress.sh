@@ -30,7 +30,7 @@ ACL="${KDBAPPCONFIG}/passwords/accesslist.txt"
 if [ "$1" = "--test" ]; then
   # VT-15: compress with the reader live, and check it never notices. uses the test config,
   # whose age tier is 1 day, so it has something to work on in a database a few days old
-  export VTCMP_CONFIG="${KDBAPPCONFIG}/compressionconfig-test.csv"
+  export VTCMP_CONFIG="${TORQAPPHOME}/testfiles/compressionconfig-test.csv"
   exec q "${TORQAPPHOME}/testfiles/vt-compress-test.q" </dev/null
 fi
 

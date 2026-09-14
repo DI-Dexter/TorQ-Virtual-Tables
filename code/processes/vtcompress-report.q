@@ -1,10 +1,9 @@
 // dry-run report for the weekend compression job (§7, VT-15).
 // loaded by vtcompress.q when --dry-run is passed; reads .cmp.scope.
 //
-// the interesting number is not how many files are in scope but how big they are. kdb+
-// compresses a file in logical blocks of 2^cblocksize bytes, and the filesystem allocates
-// space in blocks of its own, so a column file that already fits inside one filesystem
-// block cannot get smaller on disk however well its bytes compress.
+// The interesting number is not how many files are in scope but how big they are: a column
+// file already inside one filesystem block cannot get smaller on disk however well its bytes
+// compress.
 
 \d .cmprep
 

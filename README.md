@@ -186,9 +186,9 @@ appconfig/
   process.csv              the process list
   sort.csv                 declares the partition column (sym)
   compressionconfig.csv    the age tier: how old a partition must be before compression
-  compressionconfig-test.csv  a 1-day copy, used by ./compress.sh --test
 
-  passwords/               accesslist.txt and feed.txt - the stock TorQ demo credentials
+  passwords/               accesslist.txt and feed.txt - one entry per proctype this pack
+                           runs, plus admin for qcon
   settings/default.q       settings shared by every process
   settings/wdb.q           WDB config, including symdomain (see §8.3.1 for multi-stack)
   settings/idb.q           IDB config
@@ -207,7 +207,8 @@ code/
   loadtest.q               the load driver and measurement run by ./loadtest.sh
 
 docs/                      the architecture document and the status report
-testfiles/                 tests and evidence scripts - see below
+testfiles/                 tests and evidence scripts, plus compressionconfig-test.csv
+                           (a 1-day copy used by ./compress.sh --test) - see below
 var/                       created at runtime: db/, logs/, tplogs/
 ```
 

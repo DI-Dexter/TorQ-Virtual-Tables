@@ -1,8 +1,8 @@
 // Virtual-table capture pack : compression process
 // see docs/virtual-table-capture-pack.md §4.4 and §7
 //
-// replaces code/processes/compression.q. same job - walk the tree, compress anything older
-// than minage, exit - but it first corrects the directory classifier, which cannot see a
+// Replaces code/processes/compression.q: same job - walk the tree, compress anything older
+// than minage, exit - but first corrects the directory classifier, which cannot see a
 // date+instrument layout.
 //
 //   ./compress.sh              compress
@@ -13,29 +13,25 @@
 inputcsv:@[value;`inputcsv;.proc.getconfigfile["compressionconfig.csv"]];
 hdbpath:@[value;`hdbpath;`:hdb];
 maxage:@[value;`maxage;365];
-dryrun:@[{[x] `dryrun in key .proc.params};::;0b];
+dryrun:`dryrun in key .proc.params;
 
 // the age tier lives in the csv as minage. VTCMP_CONFIG points at a different csv, which is
 // how ./compress.sh --test exercises the job against a database only a couple of days old
 if[count e:getenv`VTCMP_CONFIG; inputcsv:e];
 
-// the size gate. a file is allocated in whole filesystem blocks, so a column file that
-// already fits inside one block frees nothing when compressed - it only adds decompression
-// work to every read. measured: at this layout a third of all column files are in that
-// state, and their bands free 0% of disk (§7.2). skip them.
-// 0 disables the gate and compresses everything, which is the stock behaviour.
+// The size gate. A column file already inside one filesystem block frees nothing when
+// compressed and only adds decompression work to every read; at this layout a third of all
+// files are in that state and free 0% of disk (§7.2). 0 disables the gate, as stock does.
 minfilesize:@[value;`minfilesize;4096];
 if[count e:getenv`VTCMP_MINFILESIZE; minfilesize:"J"$e];
 
-// stock hdbstructure classifies a path purely by how deep it is, and knows only two shapes:
-// partition/table/column and table/column. a partbyattr column file sits one level deeper,
-// at partition/table/instrument/column, so it matches neither, `table` stays null, and
-// showcomp's "delete from pathstab where table in `" then drops every row - the job runs
-// successfully and compresses nothing. adding the extra depth folds the instrument level
-// away, so per-column rules in compressionconfig.csv keep working unchanged.
+// Stock hdbstructure classifies a path by depth and knows only partition/table/column and
+// table/column. A partbyattr column file sits one deeper, so it matches neither, `table` stays
+// null, and showcomp drops every row - the job succeeds and compresses nothing. Adding the
+// extra depth folds the instrument level away, so per-column rules keep working unchanged.
 //
-// this has to be applied here rather than in appconfig/settings/compression.q: settings load
-// before code/common/compress.q, so an override there is overwritten by the stock definition.
+// Must be applied here, not in appconfig/settings/compression.q: settings load before
+// code/common/compress.q, so an override there is overwritten by the stock definition.
 hdbstructure:{
   t:([]fullpath:(raze/)traverse x);
   base:count "/" vs string x;

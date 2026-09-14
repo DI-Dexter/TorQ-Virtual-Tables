@@ -1,11 +1,9 @@
-/ Virtual-table capture pack : WDB overlay
+/ Virtual-table capture pack : WDB overlay. Sections 4.1, 4.2, 4.5, 4.6 of
+/ docs/virtual-table-capture-pack.md.
 / .
-/ Implements sections 4.1, 4.2, 4.5 and 4.6 of docs/virtual-table-capture-pack.md.
-/ .
-/ Load order note: $KDBAPPCODE/wdb/ is loaded by .proc.reloadcode BEFORE the stock
-/ code/processes/wdb.q, so anything defined here directly would be clobbered. Everything
-/ is therefore defined under a private name and swapped in from .proc.initlist, which
-/ runs last. Same pattern as the No-RDB pack's code/wdb/rollover.q.
+/ This file loads BEFORE the stock code/processes/wdb.q, so anything defined directly would
+/ be clobbered. Everything is named privately and swapped in from .proc.initlist, which runs
+/ last.
 / .
 / NOTE a line containing only "/" opens a block comment in q, so every comment line here
 / carries text after the slash.
@@ -27,12 +25,9 @@ vtdirname:{[expt] `$"_"^.Q.an .Q.an?"_" sv string `TORQNULLSYMBOL^ensuresymlist[
 / because those are carried by the directory name (4.5)
 vtschema:{[t;expttype] ![0#value t;();0b;expttype]};
 
-/ ---------------------------------------------------------------------------
-/ 4.5 - write the data WITHOUT the partition column.
-/ a column stored inside the files can never be used to skip directories, so leaving
-/ sym in the data would make every query on it scan the whole database.
-/ also records directories that did not exist beforehand, for 4.6 below.
-/ ---------------------------------------------------------------------------
+/ 4.5 - write the data WITHOUT the partition column: a column inside the files can never be
+/ used to skip directories, so leaving sym in would make every query on it scan everything.
+/ Also records directories that did not exist beforehand, for 4.6.
 vtupserttopartition:{[dir;tablename;tabdata;pt;expttype;expt;writedownmode]
   base:` sv .Q.par[dir;pt;tablename],vtdirname[expt];
   if[()~key base; vtnew,:enlist (pt;expt)];
@@ -42,11 +37,8 @@ vtupserttopartition:{[dir;tablename;tabdata;pt;expttype;expt;writedownmode]
   .merge.partsizes[base]+:(count r;-22!r);
   };
 
-/ ---------------------------------------------------------------------------
-/ 4.6 - every table must have a directory in every partition.
-/ a partition holding trade but not quote breaks a reader's load outright, and if it
-/ sorts first it silently truncates the reader's table list. cheap to prevent here.
-/ ---------------------------------------------------------------------------
+/ 4.6 - every table needs a directory in every partition. One holding trade but not quote
+/ breaks a reader's load, and if it sorts first it silently truncates the table list.
 vtfill:{[pt;expt]
   {[pt;expt;t]
     d:` sv .Q.par[savedir;pt;t],vtdirname[expt],`;
@@ -56,22 +48,15 @@ vtfill:{[pt;expt]
     }[pt;expt] each tablelist[];
   };
 
-/ ---------------------------------------------------------------------------
-/ 4.1 - tell readers about NEW partitions only.
-/ appends need no notification: readers hold live views (5.2) and see them already.
-/ the only event a reader must react to is a directory appearing.
-/ ORDER MATTERS - fill every table's directory before notifying, or a reader can
-/ rebuild against a half-created partition and fail (4.6).
-/ ---------------------------------------------------------------------------
+/ 4.1 - notify readers about NEW partitions only. Appends need none: readers hold live views
+/ (5.2) and see them already. ORDER MATTERS - fill every table's directory before notifying,
+/ or a reader can rebuild against a half-created partition and fail (4.6).
 / .
-/ NOTE the pending carry-over is what covers a tickerplant log REPLAY. TorQ's replay does not
-/ come through here at all: replaymaxrowcheck calls savetables[savedir;getpartition[];0b;t]
-/ directly, once per table, whenever a table exceeds replaymaxrows. So vtupserttopartition runs
-/ and vtnew fills correctly - with every directory, since deletewdbdata wiped the partition
-/ first - but vtfill and the notification never fire. Clearing vtnew unconditionally here then
-/ THREW THAT LIST AWAY on the first flush after the replay, so an instrument that only ever had
-/ rows in one table came back without its empty directory in the other. Harmless while every
-/ table is busy; it is 4.6's silently-absent-date the moment a table receives nothing all day.
+/ NOTE `pending` covers a tickerplant log REPLAY, which never reaches this function:
+/ replaymaxrowcheck calls savetables directly, so vtupserttopartition runs and fills vtnew,
+/ but vtfill and the notification do not. Clearing vtnew unconditionally threw that list away
+/ on the first flush after a replay, leaving an instrument without its empty directory in any
+/ table that had no rows - 4.6's silently-absent-date.
 vtsavetodisk:{[]
   pending:vtnew;                                     / anything a replay's direct calls left
   vtnew::();                                         / edge-triggered: only this flush counts
@@ -83,66 +68,42 @@ vtsavetodisk:{[]
     notifyidbs[`.vtidb.rebuild;enlist()]];
   };
 
-/ ---------------------------------------------------------------------------
-/ 4.2 - end of day does nothing but announce the new date.
-/ stock endofdaysort would merge the instrument directories back into one table per
-/ date, which is precisely the layout this design exists to avoid.
-/ ---------------------------------------------------------------------------
+/ 4.2 - end of day only announces the new date. Stock endofdaysort would merge the instrument
+/ directories back into one table per date, which is the layout this design exists to avoid.
 vteodsort:{[dir;pt;tablist;writedownmode;mergelimits;hdbsettings;mergemethod]
   .lg.o[`vtwrite;"no-merge eod - partition ",string[pt]," stays in place"];
   notifyidbs[`.vtidb.rollover;enlist pt+1];
   };
 
-/ ---------------------------------------------------------------------------
-/ 8.3.1 - name this stack's enumeration domain.
-/ symbol columns are indices into a file at the database root, and a reader binds a global
-/ named after that FILE. two stacks that both call it `sym` cannot be served by one reader:
-/ one load wins and the other's symbols resolve to the wrong values, silently. giving each
-/ stack its own name removes the coupling entirely.
+/ 8.3.1 - name this stack's enumeration domain. A reader binds a global named after the FILE,
+/ so two stacks both calling it `sym cannot be served by one reader: one load wins and the
+/ other's symbols resolve wrongly, silently.
 / .
-/ .Q.en[d;t] is .Q.ens[d;t;`sym], so redirecting .Q.en covers every enumeration site in the
-/ writer at once - savetables, the empty-partition fill, and the initial table creation -
-/ without copying a forty-line TorQ function to change one symbol in it.
-/ ---------------------------------------------------------------------------
+/ .Q.en[d;t] is .Q.ens[d;t;`sym], so redirecting .Q.en covers every enumeration site at once
+/ rather than copying a forty-line TorQ function to change one symbol in it.
 applysymdomain:{[]
   if[symdomain~`sym; :()];
   .lg.o[`vtwrite;"enumerating against `",string[symdomain]," instead of `sym (8.3.1)"];
   .Q.en:{[dom;d;t] .Q.ens[d;t;dom]}[symdomain];
   };
 
-/ ---------------------------------------------------------------------------
-/ 4.7 - the overrides must be installed BEFORE the tickerplant log is replayed.
+/ 4.7 - the overrides must be installed BEFORE the tickerplant log is replayed, and
+/ .proc.addinitlist alone is not enough. startup[] subscribes and replays, and wdb.q calls it
+/ at the bottom of the file - well before the init list runs. So on a restart with a populated
+/ log the replay is written by the STOCK writer, which keeps the partition column in the files
+/ (4.5) and leaves old and new partitions mismatched (9.3).
 / .
-/ .proc.addinitlist alone is not enough, and the gap is silent. Load order is:
-/ .
-/   code/wdb/origstartup.q       defines .wdb.startup
-/   $KDBAPPCODE/wdb/vtwrite.q    this file
-/   code/processes/wdb.q         defines savetables/upserttopartition, then CALLS startup
-/   .proc.init[]                 runs the init list
-/ .
-/ startup[] is what subscribes to the tickerplant and replays its log, and it runs at the
-/ bottom of wdb.q - a full second before the init list. So on any restart with a populated
-/ log, every partition rebuilt by the replay was written by the STOCK writer, which keeps
-/ the partition column in the files. That is the one thing this design cannot tolerate
-/ (4.5), and it puts old and new partitions into the mismatched-column state of 9.3.
-/ .
-/ It only shows up on the normal recovery path - restart a writer whose log has data - so a
-/ test that wipes var/ first will never see it. testfiles/vt-replay-test.q covers it.
-/ .
-/ startup is defined in origstartup.q, which loads BEFORE this file, and wdb.q only calls it.
-/ So wrapping it here survives, where redefining anything wdb.q owns would not.
-/ ---------------------------------------------------------------------------
+/ Only the normal recovery path shows it, so a test that wipes var/ first never will;
+/ testfiles/vt-replay-test.q covers it. startup is defined before this file and only CALLED by
+/ wdb.q, so wrapping it survives where redefining anything wdb.q owns would not.
 origstartup:startup;
 startup:{[]
   applyvtwrite[];
   origstartup[]
   };
 
-/ ---------------------------------------------------------------------------
-/ swap everything in once the stock wdb.q has finished loading.
-/ still registered: the wrapper above covers the replay path, this covers a writer that
-/ never subscribes (saveenabled off, or no tickerplant). applyvtwrite is idempotent.
-/ ---------------------------------------------------------------------------
+/ Swap everything in once the stock wdb.q has loaded. Still registered on the init list: the
+/ wrapper above covers the replay path, this covers a writer that never subscribes. Idempotent.
 applyvtwrite:{[]
   .lg.o[`vtwrite;"installing virtual-table capture overrides (4.1, 4.2, 4.5, 4.6)"];
   upserttopartition::vtupserttopartition;

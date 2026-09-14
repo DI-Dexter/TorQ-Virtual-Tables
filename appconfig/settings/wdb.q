@@ -16,25 +16,17 @@ sorttypes:sortworkertypes:()
 idbtypes:`idb
 permitreload:0b                          // nothing to reload
 sortcsv:hsym`$getenv[`KDBAPPCONFIG],"/sort.csv"
-// ---------------------------------------------------------------------------
-// seed the partition from the BUSINESS date, not the calendar date.
+// Seed the partition from the BUSINESS date, not the calendar date.
 //
-// TorQ initialises .wdb.currentpartition from .proc.cd[] - the calendar date - and
-// clearwdbdata[] then deletes THAT partition before the tickerplant log is replayed. With a
-// roll offset the two disagree: at 07:06 UTC under a 09:00 roll the calendar says the 19th
-// while the tickerplant is still logging the 18th. The delete then misses (nothing exists for
-// the 19th yet), fixpartition corrects currentpartition afterwards from the tp log date, and
-// the replay writes the whole day on top of data that was never removed - duplicating every
-// row already on disk. Measured on this stack after one restart: 442 duplicate rows.
+// TorQ seeds .wdb.currentpartition from .proc.cd[], and clearwdbdata[] deletes THAT
+// partition before replaying the tickerplant log. Under a roll offset the two disagree, so
+// the delete misses, fixpartition corrects the date afterwards, and the replay writes the
+// day on top of data that was never removed. Measured: 442 duplicate rows after one restart.
+// .eodtime.getday is what the tickerplant dates its own logs with, so seeding from it makes
+// the two agree at any offset, including none.
 //
-// .eodtime.getday is the same function the tickerplant uses to date its own logs, so seeding
-// from it makes the writer agree with the tickerplant by construction at ANY roll offset -
-// including none, where it reduces to the plain date and nothing changes.
-//
-// NOTE .eodtime is not loaded when this settings file runs (settings load ~11ms earlier), so
-// the lookup sits inside the function body, not at the top level. writedown.q calls
-// getpartition[] well after eodtime.q has loaded; the trap covers it never arriving at all.
-// ---------------------------------------------------------------------------
+// NOTE .eodtime is not loaded when this file runs, so the lookup sits inside the function
+// body rather than at the top level.
 startpartition:{[]
   d:@[{[x] .eodtime.getday .z.p};(::);{[e] .proc.cd[]}];
   (`date^@[value;`.wdb.partitiontype;`date])$d
@@ -42,11 +34,10 @@ startpartition:{[]
 
 getpartition:{[] @[value;`.wdb.currentpartition;{[e] .wdb.startpartition[]}]};
 
-symdomain:`sym                           // name of this stack's enumeration domain file.
-                                         // leave as `sym for a single stack. when several
-                                         // stacks are to be served by ONE reader, give each
-                                         // its own name (`syma, `symb...) - two roots both
-                                         // calling it `sym cannot be read together (8.3.1)
+symdomain:`sym                           // this stack's enumeration domain file. One reader
+                                         // serving several stacks needs a distinct name per
+                                         // stack (`syma, `symb...) - two roots both calling
+                                         // it `sym cannot be read together (8.3.1)
 
 \d .servers
 CONNECTIONS:`segmentedtickerplant`idb`discovery

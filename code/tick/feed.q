@@ -77,11 +77,10 @@ mkquote:{[n]
    n?modes; exch i; n?srcs)
   };
 
-/ resolve the handle on EVERY publish rather than caching one at startup.
-/ a cached handle dies with the tickerplant, and .servers reconnecting afterwards updates its
-/ own table - not a copy someone took at load time. a feed written the other way keeps writing
-/ to a dead descriptor and logs "Bad file descriptor" into a file nobody reads, while every
-/ process in the stack stays up and looks healthy. see testfiles/vt-tprestart-test.q
+/ Resolve the handle on EVERY publish rather than caching one at startup. A cached handle dies
+/ with the tickerplant, and .servers reconnecting updates its own table, not a copy taken at
+/ load time - so a feed written the other way writes to a dead descriptor while every process
+/ stays up and looks healthy. See testfiles/vt-tprestart-test.q
 tphandle:{[] .servers.gethandlebytype[`segmentedtickerplant;`any] };
 
 send:{[]

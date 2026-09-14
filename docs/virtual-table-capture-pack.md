@@ -1173,7 +1173,7 @@ default,7,default,2,16,9
 Recent partitions stay uncompressed so interactive queries on them run at full speed. It must
 stay above 0 whatever tier is chosen: that is also what keeps the job off the live partition,
 and never compressing a directory the WDB may still append to is the important safety property.
-`appconfig/compressionconfig-test.csv` holds a 1-day copy, which is how `--test` exercises the
+`testfiles/compressionconfig-test.csv` holds a 1-day copy, which is how `--test` exercises the
 job against a database only a couple of days old.
 
 **The size gate**, `.cmp.minfilesize` in `appconfig/settings/compression.q`, defaults to 4096
