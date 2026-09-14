@@ -206,7 +206,7 @@ code/
   selftest.q               the end-to-end check run by ./selftest.sh
   loadtest.q               the load driver and measurement run by ./loadtest.sh
 
-docs/                      the architecture document and the status report
+docs/                      the architecture document
 testfiles/                 tests and evidence scripts, plus compressionconfig-test.csv
                            (a 1-day copy used by ./compress.sh --test) - see below
 var/                       created at runtime: db/, logs/, tplogs/
@@ -299,5 +299,5 @@ is attached (§8.2).
 
 One item remains open and cannot be resolved inside the pack: a single virtual table cannot
 span both the new format and existing date-partitioned history, because the column list is
-taken from the first directory only. See §10 of the architecture document, and
-`docs/status-report.md` for the ticket-level state.
+taken from the first directory only. See §10 of the architecture document, and §13
+for the consolidated list of known issues.

@@ -2219,3 +2219,28 @@ ready yet". Not currently handled either way.
 IPC**, whether or not the client has the sym file. The same query against the virtual table
 returns correctly. Not a reason to choose the design, but worth knowing that the compatibility
 gap is not entirely one-directional.
+
+---
+
+## 13. Known issues and silent failure modes
+
+Every entry below is reproduced by a script in `testfiles/`. The ones in **bold** fail
+*silently* - wrong answers or missing data, with no error, no warning and no log line. That is
+what makes them worth listing together rather than only in the sections that explain them.
+
+| risk | impact | mitigation |
+|---|---|---|
+| Storage amplifies 4.9x at wide instrument universes | Capacity planning | Measured; size the estate on 172 B/row, not row data |
+| Large bursts bounded by writer RAM | Writer could exhaust memory | Set a `-w` limit and alert |
+| Cross-stack `by` on a symbol column splits per domain | Wrong group count in multi-stack reports | Documented; use `value`, or share one domain (§8.3.1) |
+| One table cannot span both data formats | Clients must know two table names | Raised with KX; workaround in place |
+| Small-files count | Constrains filesystem choice and backup tooling | Known and quantified; inherent to the design |
+| **A tickerplant restart stalls capture until the writer is restarted** | Silent — every process stays up and looks healthy | Feed fixed; writer needs a manual restart, which replays and loses nothing. Detect with `vt-tprestart-test.q` (§4.8) |
+| **A truncated column file returns fewer rows, silently** | Wrong answers, no warning | Demonstrated (`vt-damage-test.q`). Specific to **uncompressed** columns: a compressed one carries a metadata header kdb+ validates, so the same damage raises instead. No detection exists for the uncompressed case |
+| **Instrument names differing only in punctuation** | **One becomes unqueryable, the other absorbs its rows — silently** | Demonstrated (`vt-collision-test.q`). No detection exists. Hash or escape identifiers containing `.` `-` `/` before they reach the parted column |
+| Client scripts need edits | Migration effort for existing dashboards | Quantified: 11 of 38 operations need a `select` wrapper (`vt-compat-test.q`) |
+| A writer restart deletes and rebuilds the live partition | Anything not in the current tp log is not restored | Stock TorQ recovery; know it before restarting a writer |
+| **A partition whose `.d` names columns that are not on disk** | **Every whole-database query fails, not just that partition** | Not guarded, by decision (§5.7): transient case heals within one sweep, permanent case is a full disk where failing loudly is correct. Pinned down by `vt-diskfull-test.q` |
+| **A disk-full retry re-writes partitions that already succeeded** | Duplicate rows, silently, in the partitions written *before* the failure | Demonstrated (`vt-diskfull-test.q`, §8.5). No dedupe exists — check those partitions after any ENOSPC |
+| **The same `(date;instrument)` under two roots** | Rows served twice, no error, one key | Demonstrated (`vt-inflight-test.q`, §8.3.1). Keep stack instrument universes disjoint |
+| Partitions created during tp log replay are not announced | Up to 30s of staleness after a writer restart; `vtfill` skipped for them | Known, not fixed (VT-21.7) |
