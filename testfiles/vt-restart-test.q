@@ -1,6 +1,6 @@
 / Can the reader start up in the middle of a write, and recover? (5.1, 5.3, 6.1)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-restart-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-restart-test.q
 / .
 / A reader is restarted at whatever moment the operator restarts it, which is not a moment the
 / writer knows about. So it can arrive while a flush is half-done: a directory that has been

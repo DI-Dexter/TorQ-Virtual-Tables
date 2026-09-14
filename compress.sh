@@ -15,13 +15,15 @@
 #   0 2 * * 6  /path/to/TorQ-VT-Capture-Pack/compress.sh
 
 set -e
-. "$(cd "$(dirname "$0")" && pwd)/vt-env.sh"
+. "$(cd "$(dirname "$0")" && pwd)/setenv.sh"
 
 if [ ! -f "${TORQHOME}/torq.q" ]; then
   echo "ERROR: no torq.q under TORQHOME=${TORQHOME}" >&2
   exit 1
 fi
 
+# NOTE this runs in the FOREGROUND and tees its output, which is why it invokes q
+# directly rather than going through torq.sh (which backgrounds via nohup).
 cd "$TORQHOME"
 ACL="${KDBAPPCONFIG}/passwords/accesslist.txt"
 
@@ -34,13 +36,13 @@ fi
 
 if [ "$1" = "--dry-run" ]; then
   echo "dry run: scanning ${KDBDB}"
-  q torq.q -load "${KDBAPPCODE}/processes/vtcompress.q" $KDBSTACKID \
+  q torq.q -load "${KDBAPPCODE}/processes/vtcompress.q" -stackid "$KDBBASEPORT" \
     -proctype compression -procname cmp1 -U "$ACL" -localtime -dryrun 1 </dev/null
   exit 0
 fi
 
 echo "compressing ${KDBDB}"
-q torq.q -load "${KDBAPPCODE}/processes/vtcompress.q" $KDBSTACKID \
+q torq.q -load "${KDBAPPCODE}/processes/vtcompress.q" -stackid "$KDBBASEPORT" \
   -proctype compression -procname cmp1 -U "$ACL" -localtime \
   </dev/null 2>&1 | tee "${KDBLOG}/cmp1.console.log"
 

@@ -1,6 +1,6 @@
 / Does the size gate actually buy anything? (VT-15, §7.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-compress-ab.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-compress-ab.q
 / .
 / The gate skips column files that fit inside one filesystem block, on the grounds that they
 / free no disk. The open question is whether skipping them also costs less to read - a query

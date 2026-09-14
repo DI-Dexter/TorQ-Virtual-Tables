@@ -1,6 +1,6 @@
 / Does end of day still see everything, now that it no longer rescans history? (VT-17)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-rollover-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-rollover-test.q
 / .
 / rollover used to call dropcache[], so correctness at end of day was free - every date was
 / rescanned. It now forgets only the date that just closed. That is safe only if the drop

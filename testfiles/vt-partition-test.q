@@ -1,6 +1,6 @@
 / Does the writer delete the partition it is actually filling? (4.7, recovery)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-partition-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-partition-test.q
 / .
 / A writer restart is destructive before it is restorative. TorQ deletes the current partition
 / and then rebuilds it by replaying the tickerplant log:

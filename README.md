@@ -33,7 +33,7 @@ Point `TORQHOME` at your TorQ checkout, either in the environment:
 export TORQHOME=/path/to/TorQ
 ```
 
-or by filling in the one line in `vt-env.sh` that is deliberately left empty:
+or by filling in the one line in `setenv.sh` that is deliberately left empty:
 
 ```sh
 export TORQHOME="${TORQHOME:-}"          # -> ${TORQHOME:-/path/to/TorQ}
@@ -45,9 +45,46 @@ anywhere. `QHOME`, `QLIC` and `QPATH` are defaulted to the usual kdb-x locations
 
 ## Run
 
+Assuming the community edition of KDB-X is installed and on the PATH as `q`, download the
+install script into the directory you want this installed in:
+
 ```sh
-./start.sh          # discovery + tickerplant + WDB + IDB + feed
-./stop.sh
+wget https://raw.githubusercontent.com/DataIntellectTech/TorQ-Virtual-Tables/main/installlatest.sh
+bash installlatest.sh
+./deploy/bin/torq.sh start all
+```
+
+That fetches the latest TorQ release and this pack, and lays them out the way
+`installtorqapp.sh` does for any TorQ application: `deploy/TorQ/latest`,
+`deploy/TorQApp/latest`, `deploy/data`, and `deploy/bin` holding `torq.sh` and `setenv.sh`.
+
+As the FSP does, Linux has no wrapper script: `torq.sh` is the interface, and it builds
+every start line from `appconfig/process.csv`.
+
+```sh
+./deploy/bin/torq.sh start all
+./deploy/bin/torq.sh stop all
+./deploy/bin/torq.sh summary
+```
+
+Working from a clone instead, with TorQ already available, `torq.sh` has to be told which
+environment to load — without `SETENV` it falls back to TorQ core's own `setenv.sh` and
+reads the wrong `process.csv`, silently:
+
+```sh
+export SETENV=$PWD/setenv.sh
+$TORQHOME/torq.sh start all
+$TORQHOME/torq.sh stop all
+```
+
+Named processes and the rest of the interface work the same way:
+
+```sh
+$TORQHOME/torq.sh start idb1 wdb1     # only these
+$TORQHOME/torq.sh summary             # what is running, with PIDs and ports
+$TORQHOME/torq.sh print all           # the start lines, without running them
+$TORQHOME/torq.sh debug idb1          # one process in the foreground
+$TORQHOME/torq.sh stop all -force     # kill -9
 ```
 
 Compression is a separate, occasional job — it exits when it finishes, so cron it for a quiet
@@ -130,10 +167,13 @@ difference exists and three are expected (see §9 of the doc).
 ## Layout
 
 ```
-vt-env.sh                  the only file to edit: TORQHOME, then everything derives
-start.sh / stop.sh         bring the stack up and down. stop.sh is scoped by path, so it
-                           leaves other TorQ stacks on the machine alone even though they
-                           share the default procnames
+setenv.sh                  the only file to edit: TORQHOME, then everything derives
+installlatest.sh           download and unpack the latest TorQ release; --deploy builds
+                           a deploy/ tree with installtorqapp.sh, as the FSP does
+(no start/stop scripts)   as in the FSP, Linux uses TorQ's own torq.sh. Start lines come
+                           from appconfig/process.csv, and torq.sh scopes by
+                           -stackid $KDBBASEPORT, so other TorQ stacks on the machine are
+                           left alone even though they share the default procnames
 selftest.sh                end-to-end smoke test (code/selftest.q)
 regress.sh                 runs the sixteen assertion tests in testfiles/
 loadtest.sh                throughput run on a clean stack (code/loadtest.q). DESTRUCTIVE:
@@ -147,6 +187,7 @@ appconfig/
   sort.csv                 declares the partition column (sym)
   compressionconfig.csv    the age tier: how old a partition must be before compression
   compressionconfig-test.csv  a 1-day copy, used by ./compress.sh --test
+
   passwords/               accesslist.txt and feed.txt - the stock TorQ demo credentials
   settings/default.q       settings shared by every process
   settings/wdb.q           WDB config, including symdomain (see §8.3.1 for multi-stack)

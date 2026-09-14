@@ -1,6 +1,6 @@
 / Does a new symbol VALUE reach the reader, and how fast? (§5.4)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-symdomain-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-symdomain-test.q
 / .
 / Two different things travel at two different speeds, and conflating them hides a real gap.
 / .

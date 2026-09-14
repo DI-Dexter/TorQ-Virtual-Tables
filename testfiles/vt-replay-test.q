@@ -1,6 +1,6 @@
 / Are the writer's overrides in force during tickerplant log replay? (§4.7)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-replay-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-replay-test.q
 / .
 / Restarting the writer is the normal recovery path. TorQ handles it by DELETING the current
 / partition and rebuilding it from the tickerplant log, the log being the source of truth for

@@ -11,7 +11,7 @@
 
 set -e
 cd "$(dirname "$0")/.."
-. ./vt-env.sh >/dev/null 2>&1
+. ./setenv.sh >/dev/null 2>&1
 
 SCRATCH="/tmp/vt-kdb-compare-$$"
 PORT=${PORT:-6099}

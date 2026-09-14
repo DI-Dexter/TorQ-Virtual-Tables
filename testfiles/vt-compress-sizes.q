@@ -1,6 +1,6 @@
 / At what partition size does compression start to free real disk? (VT-15.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-compress-sizes.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-compress-sizes.q
 / .
 / The measured ratio on the running stack (§7) is dominated by one fact: at ~600 rows per
 / instrument per day, most column files are smaller than a filesystem block, and a file that

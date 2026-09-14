@@ -3,7 +3,7 @@
 / This is the evidence behind §8.2 and step 6 of §10. It builds synthetic trees of increasing
 / size, attaches the real vtidb.q to each, and measures what actually grows.
 / .
-/ Run it as:  cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-scale-test.q
+/ Run it as:  cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-scale-test.q
 / Takes a couple of minutes and about 2 GB of scratch space in /tmp.
 / .
 / NOTE a line containing only "/" opens a block comment in q, so every comment line here

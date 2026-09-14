@@ -1,6 +1,6 @@
 / Does a table that appears mid-life get picked up? (§5.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-newtable-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-newtable-test.q
 / .
 / The reader does not read the schema. It discovers its table list from the tree, by taking
 / `key` of a date directory - which is deliberate, so that adding a table to database.q needs

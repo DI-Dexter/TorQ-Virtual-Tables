@@ -1,6 +1,6 @@
 / Which q operations work on a virtual table, and which need a select wrapper? (12)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-compat-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-compat-test.q
 / .
 / The brief has long claimed "N operations probed, most work, the rest need a select in front".
 / That number came from an ad-hoc session against a running reader and was never reproducible -

@@ -1,6 +1,6 @@
 / What does on-disk damage to one partition actually do? (§4.6)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-damage-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-damage-test.q
 / .
 / §4.6 established that a MISSING table directory is served as a silently absent date. This
 / asks the next question: what about a directory that is present but damaged? Three kinds,

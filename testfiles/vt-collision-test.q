@@ -1,6 +1,6 @@
 / What happens when two instrument names sanitise to the same directory? (§2.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-collision-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-collision-test.q
 / .
 / The writer builds a directory name by replacing every non-alphanumeric character with "_".
 / That mapping is NOT injective: BRK-B and BRK_B both become BRK_B. The design has always

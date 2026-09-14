@@ -1,6 +1,6 @@
 / Is one enumeration domain safe for several concurrent writers? (§8.3.1, VT-16)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-sym-concurrency.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-sym-concurrency.q
 / .
 / Sharing one domain across capture stacks was rejected in an earlier draft partly on the
 / grounds that two writers appending to one sym file risk corrupting it. That deserved

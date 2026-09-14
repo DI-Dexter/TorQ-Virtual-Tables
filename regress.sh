@@ -8,7 +8,7 @@
 #
 # Tests come in two kinds. SELF-CONTAINED ones build their own database in a scratch
 # directory and clean it up; they never touch var/ and are safe to run any time. The rest
-# need the stack already up (./start.sh) because they publish through the live tickerplant.
+# need the stack already up because they publish through the live tickerplant.
 #
 # ONE TEST MUTATES var/db: vt-compress-test compresses every partition older than a day and
 # leaves it compressed. That is what it is for - it checks a live reader copes with files
@@ -19,13 +19,13 @@
 # script reports both the exit status and the counts.
 
 cd "$(dirname "$0")"
-. ./vt-env.sh >/dev/null 2>&1
+. ./setenv.sh >/dev/null 2>&1
 
 # vt-partition-test loads the real timezone.q and eodtime.q from TorQ core rather than a
 # copy of their formula, so the suite needs TORQHOME even though the databases are scratch.
 if [ ! -f "${TORQHOME}/torq.q" ]; then
   echo "ERROR: no torq.q under TORQHOME=${TORQHOME}" >&2
-  echo "       set TORQHOME to your TorQ checkout, or edit vt-env.sh" >&2
+  echo "       set TORQHOME to your TorQ checkout, or edit setenv.sh" >&2
   exit 1
 fi
 
@@ -103,7 +103,8 @@ for t in $SELFCONTAINED; do run "$t" q "testfiles/$t.q"; done
 echo ""
 if [ "$QUICK" = 1 ]; then
   echo "stack tests skipped (--quick)"
-  SKIP=$(echo $NEEDSTACK | wc -w); SKIP=$((SKIP+2))    # +vt-compress-test +vt-compare-kdb
+  # ADD to SKIP - self-contained tests may already have skipped on rc=77
+  SKIP=$((SKIP + $(echo $NEEDSTACK | wc -w) + 2))       # +vt-compress-test +vt-compare-kdb
 elif (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -qE ":${IDBPORT}\b"; then
   echo "against the running stack"
   for t in $NEEDSTACK; do run "$t" q "testfiles/$t.q"; done
@@ -117,8 +118,9 @@ elif (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -qE ":${IDBPORT}\b
   fi
   run_expect vt-compare-kdb '16 matched, 3 differed' ./testfiles/vt-compare-kdb.sh
 else
-  echo "stack tests skipped - nothing listening on ${IDBPORT}. Run ./start.sh first."
-  SKIP=$(echo $NEEDSTACK | wc -w); SKIP=$((SKIP+2))    # +vt-compress-test +vt-compare-kdb
+  echo "stack tests skipped - nothing listening on ${IDBPORT}. Run torq.sh start all first."
+  # ADD to SKIP - self-contained tests may already have skipped on rc=77
+  SKIP=$((SKIP + $(echo $NEEDSTACK | wc -w) + 2))       # +vt-compress-test +vt-compare-kdb
 fi
 
 echo ""

@@ -1,6 +1,6 @@
 / Can one reader serve two capture stacks? (§8.3, VT-16)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-multistack-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-multistack-test.q
 / .
 / .vtidb.roots is a list, so the scan and the virtual table already handle several trees. The
 / blocker was the enumeration domain: symbol columns are indices into a file at the root, the

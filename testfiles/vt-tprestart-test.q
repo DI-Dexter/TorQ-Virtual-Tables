@@ -1,6 +1,6 @@
 / Is the stack actually capturing, and is the writer still subscribed? (§4.8)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-tprestart-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-tprestart-test.q
 / .
 / A liveness check, and the reason it exists is worth reading before you need it.
 / .

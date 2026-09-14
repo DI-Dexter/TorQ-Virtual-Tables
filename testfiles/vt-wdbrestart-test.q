@@ -1,6 +1,6 @@
 / What does a reader serve while the writer is rebuilding the day? (4.7, 5.3, recovery)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-wdbrestart-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-wdbrestart-test.q
 / .
 / A writer restart is not a quiet event on disk. It DELETES the whole live date directory and
 / then rebuilds it by replaying the tickerplant log - which for a full day is hundreds of

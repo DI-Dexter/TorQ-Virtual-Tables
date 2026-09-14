@@ -1,6 +1,6 @@
 / What does a query see when it arrives at the worst possible moment? (5.2, 5.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-inflight-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-inflight-test.q
 / .
 / Every other test in this directory starts from a world that is standing still: the data is
 / already written, the catalogue is already built, and only then does anything get asked. That

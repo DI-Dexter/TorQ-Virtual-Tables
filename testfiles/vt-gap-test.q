@@ -5,7 +5,7 @@
 / what a reader actually does with the result.
 / .
 / Run it with the stack having captured at least one date:
-/   cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-gap-test.q
+/   cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-gap-test.q
 / .
 / NOTE a line containing only "/" opens a block comment in q, so every comment line here
 / carries text after the slash.

@@ -1,5 +1,8 @@
 #!/bin/bash
-# Environment for the TorQ Virtual-Table Capture Pack.
+# Environment for the TorQ Virtual-Table Capture Pack, in TorQ's setenv.sh format.
+#
+# torq.sh sources this through the SETENV variable, so pass SETENV=<this file> when
+# calling it. Sourcing it by hand is also how the test files expect to be run.
 #
 # This is an application overlay: it supplies config and code that layer on top of a
 # TorQ checkout, which supplies the framework and process code.
@@ -10,15 +13,15 @@
 # --- the two roots -----------------------------------------------------------
 # TorQ core: the checkout that contains torq.q, code/ and config/. There is no sensible
 # default, so either export TORQHOME before sourcing this file or fill in the path below.
-# start.sh and compress.sh both check it and stop with a clear message if it is wrong.
+# compress.sh checks it and stops with a clear message if it is wrong.
 export TORQHOME="${TORQHOME:-}"
 
-# warn when sourced by hand - the test headers say ". ./vt-env.sh && q testfiles/<x>.q", and
+# warn when sourced by hand - the test headers say ". ./setenv.sh && q testfiles/<x>.q", and
 # without this an unset TORQHOME turns KDBCODE into "/code" and the failure is a load error
 # deep inside a test rather than anything pointing back here.
 if [ ! -f "${TORQHOME}/torq.q" ]; then
-  echo "vt-env.sh: WARNING - no torq.q under TORQHOME=${TORQHOME:-<unset>}" >&2
-  echo "vt-env.sh:           set TORQHOME to your TorQ checkout, or edit this file" >&2
+  echo "setenv.sh: WARNING - no torq.q under TORQHOME=${TORQHOME:-<unset>}" >&2
+  echo "setenv.sh:           set TORQHOME to your TorQ checkout, or edit this file" >&2
 fi
 
 # this pack, resolved from the location of this script - never hardcode it

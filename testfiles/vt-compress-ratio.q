@@ -1,7 +1,7 @@
 / Does compression pay on a date+instrument tree? (VT-15.3)
 / .
 / Run after ./compress.sh, against real captured data:
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-compress-ratio.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-compress-ratio.q
 / .
 / Reads every compressed column file's own header, which carries both the compressed and the
 / uncompressed length, so no data has to be regenerated or re-compressed to measure it.

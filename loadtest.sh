@@ -8,11 +8,11 @@
 # Wipes var/ so every run starts from a known state.
 
 cd "$(dirname "$0")"
-. ./vt-env.sh >/dev/null 2>&1
+. ./setenv.sh >/dev/null 2>&1
 
 if [ ! -f "${TORQHOME}/torq.q" ]; then
   echo "ERROR: no torq.q under TORQHOME=${TORQHOME}" >&2
-  echo "       set TORQHOME to your TorQ checkout, or edit vt-env.sh" >&2
+  echo "       set TORQHOME to your TorQ checkout, or edit setenv.sh" >&2
   exit 1
 fi
 
@@ -20,32 +20,19 @@ ROWS=${ROWS:-200000}
 PAIRS=${PAIRS:-50}
 BATCH=${BATCH:-1000}
 
-./stop.sh >/dev/null 2>&1
+SETENV="$PWD/setenv.sh" "$TORQHOME/torq.sh" stop all >/dev/null 2>&1
 rm -rf var
 mkdir -p "$KDBDB" "$KDBLOG" "$KDBTPLOG"
 
 echo "load test: $ROWS rows, $PAIRS instruments, batches of $BATCH"
 
 APPHOME="$TORQAPPHOME"
-ACL="${KDBAPPCONFIG}/passwords/accesslist.txt"
-cd "$TORQHOME"
-launch () {
-  q torq.q -load "$4" $KDBSTACKID -proctype "$2" -procname "$1" -localtime $3 \
-    </dev/null >"${KDBLOG}/$1.console.log" 2>&1 &
-  disown
-}
-launch discovery1 discovery "-U $ACL" "${KDBCODE}/processes/discovery.q"
-sleep 2
-q torq.q -load "${KDBCODE}/processes/segmentedtickerplant.q" \
-  -schemafile "${APPHOME}/database.q" -tplogdir "$KDBTPLOG" $KDBSTACKID \
-  -proctype segmentedtickerplant -procname stp1 -U "$ACL" -localtime \
-  </dev/null >"${KDBLOG}/stp1.console.log" 2>&1 &
-disown
-sleep 2
-launch wdb1 wdb "-U $ACL -g 1" "${KDBCODE}/processes/wdb.q"
-sleep 3
-launch idb1 idb "-U $ACL -s 4" "${KDBAPPCODE}/processes/vtidb.q"
-sleep 4
+
+# Bring the stack up through TorQ's process manager, naming the processes so the demo
+# feed (feed1) is left out - the load test drives its own data through code/loadtest.q.
+SETENV="$PWD/setenv.sh" "$TORQHOME/torq.sh" start discovery1 stp1 wdb1 idb1
+sleep 8
+
 # count only THIS pack's processes - the procnames are TorQ defaults, so an unscoped
 # pgrep counts every stack on the machine (it reported 8/4 with two stacks up)
 up=$(pgrep -f 'procname (discovery1|stp1|wdb1|idb1)' 2>/dev/null | while read -r pid; do

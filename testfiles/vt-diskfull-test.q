@@ -1,6 +1,6 @@
 / What happens when the disk fills up? (4.5, 5.3, 9.3)
 / .
-/     cd ~/TorQ-VT-Capture-Pack && . ./vt-env.sh && q testfiles/vt-diskfull-test.q
+/     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-diskfull-test.q
 / .
 / This one needs a filesystem it can actually fill, so it re-runs itself inside a private mount
 / namespace with a small tmpfs in it. No root, and nothing outside that namespace is touched -
