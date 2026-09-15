@@ -19,44 +19,28 @@ lookup rather than a scan, it needs no index, and there is nothing to rebuild at
 See `docs/virtual-table-capture-pack.md` — start with §0, which lists each design decision
 alongside the alternative that was tried and rejected.
 
-## Requirements
+## Set Up
 
-- A TorQ checkout (5.2.x)
-- kdb-x, with the `kx.pq.t` virtual-table module on `QPATH`. Not kdb+ 4.x: the reader
-  binds `mkP` with ``use`kx.pq.t``, and `use` is a kdb-x keyword
+Assuming that the community edition of [KDB-X](https://code.kx.com/kdb-x/get_started/kdb-x-install.html)
+is already set up and available from the command prompt as `q`, then:
 
-## Setup
+1. Download the install script in the directory where you want the pack to be installed using:
 
-Point `TORQHOME` at your TorQ checkout, either in the environment:
+    `wget https://raw.githubusercontent.com/DataIntellectTech/TorQ-Virtual-Tables/main/installlatest.sh`
 
-```sh
-export TORQHOME=/path/to/TorQ
-```
+2. Run it. It downloads the latest TorQ release and this pack, and lays them out the way
+   `installtorqapp.sh` does for any TorQ application, under `deploy/`:
 
-or by filling in the one line in `setenv.sh` that is deliberately left empty:
+    `bash installlatest.sh`
 
-```sh
-export TORQHOME="${TORQHOME:-}"          # -> ${TORQHOME:-/path/to/TorQ}
-```
+3. Run `torq.sh` in the bin directory with the command line argument `start all`:
 
-Everything else derives from that and from the location of the pack, so it can be cloned
-anywhere. `QHOME`, `QLIC` and `QPATH` are defaulted to the usual kdb-x locations under
-`~/.kx` and can be overridden the same way.
+    `./deploy/bin/torq.sh start all`
 
-## Run
+Use an empty directory, and stop any other TorQ stack first — see below. The pack needs the
+`kx.pq.t` virtual-table module that ships with KDB-X.
 
-Assuming the community edition of KDB-X is installed and on the PATH as `q`, download the
-install script into the directory you want this installed in:
-
-```sh
-wget https://raw.githubusercontent.com/DataIntellectTech/TorQ-Virtual-Tables/main/installlatest.sh
-bash installlatest.sh
-./deploy/bin/torq.sh start all
-```
-
-That fetches the latest TorQ release and this pack, and lays them out the way
-`installtorqapp.sh` does for any TorQ application: `deploy/TorQ/latest`,
-`deploy/TorQApp/latest`, `deploy/data`, and `deploy/bin` holding `torq.sh` and `setenv.sh`.
+### Installation details
 
 **Install into an empty directory.** `deploy/` is created relative to wherever the script runs,
 and if one is already there — an existing Finance Starter Pack install, say — it is treated as an
@@ -91,52 +75,25 @@ directory rather than replacing it, which is `installtorqapp.sh`'s behaviour for
 application: files deleted upstream are left behind. A release gets a directory of its own, so
 this only matters for branch installs — delete `deploy/TorQApp/` first for a clean one.
 
-As the FSP does, Linux has no wrapper script: `torq.sh` is the interface, and it builds
-every start line from `appconfig/process.csv`.
+## Run
+
+As in the FSP, Linux has no wrapper script: `torq.sh` in the bin directory is the interface, and
+it builds every start line from `appconfig/process.csv`.
 
 ```sh
 ./deploy/bin/torq.sh start all
 ./deploy/bin/torq.sh stop all
-./deploy/bin/torq.sh summary
+./deploy/bin/torq.sh summary                # what is running, with PIDs and ports
+./deploy/bin/torq.sh start idb1 wdb1        # named processes only
+./deploy/bin/torq.sh print all              # the start lines, without running them
+./deploy/bin/torq.sh debug idb1             # one process in the foreground
+./deploy/bin/torq.sh stop all -force        # kill -9
 ```
 
-Working from a clone instead, with TorQ already available, `torq.sh` has to be told which
-environment to load. `torq.sh` looks for `setenv.sh` in its own directory, which for
-`$TORQHOME/torq.sh` is TorQ core's — and that points at an `appconfig/process.csv` a TorQ
-checkout does not have, so every command fails with a missing-file error:
+Watch it capture:
 
 ```sh
-export SETENV=$PWD/setenv.sh
-$TORQHOME/torq.sh start all
-$TORQHOME/torq.sh stop all
-```
-
-Named processes and the rest of the interface work the same way:
-
-```sh
-$TORQHOME/torq.sh start idb1 wdb1     # only these
-$TORQHOME/torq.sh summary             # what is running, with PIDs and ports
-$TORQHOME/torq.sh print all           # the start lines, without running them
-$TORQHOME/torq.sh debug idb1          # one process in the foreground
-$TORQHOME/torq.sh stop all -force     # kill -9
-```
-
-Compression is a separate, occasional job — it exits when it finishes, so cron it for a quiet
-window rather than running it under the stack. Two gates decide what it touches: an age tier
-(`minage` in `appconfig/compressionconfig.csv`, 7 days) so recent data stays uncompressed and
-fast to query, and a size gate (`.cmp.minfilesize` in `appconfig/settings/compression.q`) that
-skips column files too small to free a filesystem block:
-
-```sh
-./compress.sh --dry-run    # what it would touch, and the ceiling on what it can free
-./compress.sh              # compress everything older than minage
-```
-
-Then watch it work:
-
-```sh
-find var/db -mindepth 3 -maxdepth 3 -type d | head
-tail -f var/logs/out_wdb1.log
+find deploy/data/db -mindepth 3 -maxdepth 3 -type d | head
 ```
 
 And query it:
@@ -156,6 +113,54 @@ disagree for part of every day.
 
 Ask twice a few seconds apart and the counts move. Nothing was reloaded — each partition is
 opened as a live view, so rows the writer appends are visible immediately.
+
+## Working from a clone
+
+For development against a TorQ checkout (5.2.x) rather than an installed tree. Point `TORQHOME`
+at the checkout, either in the environment:
+
+```sh
+export TORQHOME=/path/to/TorQ
+```
+
+or by filling in the one line in `setenv.sh` that is deliberately left empty:
+
+```sh
+export TORQHOME="${TORQHOME:-}"          # -> ${TORQHOME:-/path/to/TorQ}
+```
+
+Everything else derives from that and from the location of the pack. `QHOME`, `QLIC` and
+`QPATH` are defaulted to the usual KDB-X locations under `~/.kx` and can be overridden the same
+way.
+
+`torq.sh` then has to be told which environment to load. It looks for `setenv.sh` in its own
+directory, which for `$TORQHOME/torq.sh` is TorQ core's — and that points at an
+`appconfig/process.csv` a TorQ checkout does not have, so every command fails with a
+missing-file error:
+
+```sh
+export SETENV=$PWD/setenv.sh
+$TORQHOME/torq.sh start all
+$TORQHOME/torq.sh stop all
+```
+
+The data lands in `var/` rather than `deploy/data/`:
+
+```sh
+find var/db -mindepth 3 -maxdepth 3 -type d | head
+tail -f var/logs/out_wdb1.log
+```
+
+Compression is a separate, occasional job — it exits when it finishes, so cron it for a quiet
+window rather than running it under the stack. Two gates decide what it touches: an age tier
+(`minage` in `appconfig/compressionconfig.csv`, 7 days) so recent data stays uncompressed and
+fast to query, and a size gate (`.cmp.minfilesize` in `appconfig/settings/compression.q`) that
+skips column files too small to free a filesystem block:
+
+```sh
+./compress.sh --dry-run    # what it would touch, and the ceiling on what it can free
+./compress.sh              # compress everything older than minage
+```
 
 ## Self test
 
