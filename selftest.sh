@@ -12,4 +12,4 @@ if ! pgrep -f "procname idb1" >/dev/null 2>&1; then
   exit 1
 fi
 
-q "${TORQAPPHOME}/code/selftest.q" < /dev/null
+q "${TORQAPPHOME}/testfiles/selftest.q" < /dev/null

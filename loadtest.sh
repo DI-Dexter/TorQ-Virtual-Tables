@@ -1,6 +1,6 @@
 #!/bin/bash
 # VT-12 load test. Starts a clean stack WITHOUT the demo feed, then hands off to
-# code/loadtest.q which drives the load and measures the whole chain from one process.
+# testfiles/loadtest.q which drives the load and measures the whole chain from one process.
 #
 #   ./loadtest.sh                            200k rows, 50 instruments
 #   ROWS=2000000 PAIRS=500 ./loadtest.sh     heavier
@@ -29,7 +29,7 @@ echo "load test: $ROWS rows, $PAIRS instruments, batches of $BATCH"
 APPHOME="$TORQAPPHOME"
 
 # Bring the stack up through TorQ's process manager, naming the processes so the demo
-# feed (feed1) is left out - the load test drives its own data through code/loadtest.q.
+# feed (feed1) is left out - the load test drives its own data through testfiles/loadtest.q.
 SETENV="$PWD/setenv.sh" "$TORQHOME/torq.sh" start discovery1 stp1 wdb1 idb1
 sleep 8
 
@@ -41,7 +41,7 @@ done | wc -l)
 echo "stack up: ${up}/4"
 echo ""
 
-LOADROWS=$ROWS LOADPAIRS=$PAIRS LOADBATCH=$BATCH q "${APPHOME}/code/loadtest.q" </dev/null
+LOADROWS=$ROWS LOADPAIRS=$PAIRS LOADBATCH=$BATCH q "${APPHOME}/testfiles/loadtest.q" </dev/null
 
 echo ""
 echo "  files on disk          : $(find "$KDBDB" -type f | wc -l)"

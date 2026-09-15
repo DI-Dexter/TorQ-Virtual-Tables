@@ -220,9 +220,9 @@ installlatest.sh           download and unpack the latest TorQ release; --deploy
                            from appconfig/process.csv, and torq.sh scopes by
                            -stackid $KDBBASEPORT, so other TorQ stacks on the machine are
                            left alone even though they share the default procnames
-selftest.sh                end-to-end smoke test (code/selftest.q)
+selftest.sh                end-to-end smoke test (testfiles/selftest.q)
 regress.sh                 runs the sixteen assertion tests in testfiles/
-loadtest.sh                throughput run on a clean stack (code/loadtest.q). DESTRUCTIVE:
+loadtest.sh                throughput run on a clean stack (testfiles/loadtest.q). DESTRUCTIVE:
                            it does rm -rf var to start from a known state, so run it on a
                            throwaway copy unless you mean to lose the database
 compress.sh                the weekend compression job; --dry-run and --test
@@ -245,16 +245,14 @@ appconfig/
 code/
   wdb/vtwrite.q            the writer overrides this design needs (see §4 of the doc)
   processes/vtidb.q        the IDB reader (see §5 of the doc)
-  processes/vtcompress.q   the compression job (see §7 of the doc)
-  processes/vtcompress-report.q  the --dry-run report, loaded by vtcompress.q
+  processes/vtcompress.q   the compression job and its --dry-run report (see §7 of the doc)
   tick/feed.q              demo feed, FSP trade/quote generator
   tick/loadfeed.q          the load-test feed: no timers, driven as fast as it will go
-  selftest.q               the end-to-end check run by ./selftest.sh
-  loadtest.q               the load driver and measurement run by ./loadtest.sh
 
 docs/                      the architecture document
-testfiles/                 tests and evidence scripts, plus compressionconfig-test.csv
-                           (a 1-day copy used by ./compress.sh --test) - see below
+testfiles/                 tests and evidence scripts - see below. Also selftest.q and
+                           loadtest.q, run by ./selftest.sh and ./loadtest.sh, and
+                           compressionconfig-test.csv, the 1-day copy ./compress.sh --test uses
 var/                       created at runtime: db/, logs/, tplogs/
 ```
 
