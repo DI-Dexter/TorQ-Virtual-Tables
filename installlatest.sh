@@ -82,7 +82,10 @@ if [ -n "$APP_TAG" ] && validtag "$APP_TAG"; then
   APP_VER="${APP_TAG#v}"; APP_URL="https://github.com/${APP_REPO}/archive/${APP_TAG}.tar.gz"
   echo " ${APP_NAME} release : $APP_TAG"
 else
-  REF="${APP_REF:-main}"; APP_VER="${REF}"
+  REF="${APP_REF:-main}"
+  # installtorqapp.sh takes everything after the LAST hyphen in the filename as the version,
+  # so a branch name like part1-foo-bar would install as "bar". Hyphens and slashes out.
+  APP_VER=$(printf '%s' "$REF" | tr -- '-/' '__')
   APP_URL="https://github.com/${APP_REPO}/archive/refs/heads/${REF}.tar.gz"
   echo " ${APP_NAME} : no release found, taking branch '${REF}'"
 fi
@@ -96,21 +99,24 @@ GET "$APP_URL" "_app_raw.tar.gz" || {
 # repack so the top-level directory matches the filename installtorqapp.sh expects
 rm -rf _app && mkdir _app && tar -xzf _app_raw.tar.gz -C _app
 INNER=$(ls _app)
-mv "_app/${INNER}" "_app/${APP_NAME}-${APP_VER}"
+# GitHub's archive is frequently named exactly this already (a tag v1.2.3 extracts to
+# <repo>-1.2.3), and mv onto an existing directory moves it INSIDE itself.
+if [ "$INNER" != "${APP_NAME}-${APP_VER}" ]; then
+  mv "_app/${INNER}" "_app/${APP_NAME}-${APP_VER}"
+fi
 tar -czf "$APP_TGZ" -C _app "${APP_NAME}-${APP_VER}"
 rm -rf _app _app_raw.tar.gz
 
 # installtorqapp.sh ships inside the TorQ tarball - no second download needed
 tar -xzf "$TORQ_TGZ" "TorQ-${TORQ_VER}/installtorqapp.sh" --strip-components=1
 
-# it copies <app>/hdb and <app>/dqe into the data dir; this pack has neither, and the
-# copy failing is noisy but harmless. Give it empty ones so the install stays quiet.
-mkdir -p _stub/hdb _stub/dqe
+# installtorqapp.sh tries to copy <app>/hdb and <app>/dqe into the data directory, as the
+# FSP ships both. This pack has neither, so it prints two "cannot stat" lines - harmless.
 
 echo ""
 bash installtorqapp.sh --torq "$TORQ_TGZ" --releasedir "$RELEASEDIR" \
                        --data "${RELEASEDIR}/data" --installfile "$APP_TGZ" || true
-rm -rf _stub installtorqapp.sh "$TORQ_TGZ" "$APP_TGZ"
+rm -f installtorqapp.sh "$TORQ_TGZ" "$APP_TGZ"
 
 if [ ! -x "${RELEASEDIR}/bin/torq.sh" ]; then
   echo "ERROR: ${RELEASEDIR}/bin/torq.sh was not produced - install failed" >&2; exit 1
