@@ -247,16 +247,16 @@ code/
   processes/vtidb.q        the IDB reader (see §5 of the doc)
   processes/vtcompress.q   the compression job and its --dry-run report (see §7 of the doc)
   tick/feed.q              demo feed, FSP trade/quote generator
-  tick/loadfeed.q          the load-test feed: no timers, driven as fast as it will go
 
 docs/                      the architecture document
-testfiles/                 tests and evidence scripts - see below. Also selftest.q and
-                           loadtest.q, run by ./selftest.sh and ./loadtest.sh, and
-                           compressionconfig-test.csv, the 1-day copy ./compress.sh --test uses
-var/                       created at runtime: db/, logs/, tplogs/
+testfiles/                 tests, evidence scripts and the self and load test drivers - see
+                           below. Also compressionconfig-test.csv, the 1-day copy
+                           ./compress.sh --test uses
+var/                       created at runtime in a clone: db/, logs/, tplogs/. An install
+                           uses deploy/data/ instead
 ```
 
-`testfiles/` holds two different kinds of script, and only the first kind asserts:
+`testfiles/` holds three kinds of script, and only the first is run by `./regress.sh`:
 
 ```
 assertions (16)            run by ./regress.sh, each exits non-zero on failure
@@ -276,11 +276,18 @@ evidence (9)               measurements and probes, read for their output, not p
   vt-limitations           what virtual tables do not support
   vt-probe                 an annotated tour of the on-disk structures
   vt-sample-legacy         the legacy single-directory sample, kept for comparison
+
+drivers (2)                run by their own scripts at the root, against the live stack
+  selftest                 end-to-end smoke test, run by ./selftest.sh
+  loadtest                 throughput through the whole chain, run by ./loadtest.sh
 ```
 
-`var/db` is the whole database — live and historical data in one directory.
+The database is one directory holding live and historical data alike: `var/db` in a clone,
+`deploy/data/db` in an install.
 
 ## What is on disk
+
+In a clone, under `var/db`; in an install, the same tree under `deploy/data/db`.
 
 ```
 var/db/
