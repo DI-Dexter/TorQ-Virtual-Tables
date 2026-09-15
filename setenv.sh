@@ -10,6 +10,28 @@
 # Only TORQHOME below should ever need editing. Everything else derives from it and
 # from the location of this file, so the pack can be cloned anywhere.
 
+# --- inside an installed tree ------------------------------------------------
+# installlatest.sh lays the pack out as deploy/TorQApp/<version>/<pack>/ and writes the real
+# paths into deploy/bin/setenv.sh, a copy of this file. This copy is never rewritten, so a script
+# run from the installed pack - selftest.sh, regress.sh, compress.sh - would get an empty TorQ
+# location and a var/ database that nothing writes to. Defer to the rewritten copy instead.
+# The depth is checked exactly, and deploy/bin/torq.sh must sit beside it, so a clone that
+# merely lives under a directory called TorQApp is left alone.
+_vtphys="$(cd -P "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+case "${_vtphys#*/TorQApp/}" in
+  "$_vtphys"|*/*/*) ;;                                  # not under TorQApp, or too deep
+  */*)
+    _vtroot="${_vtphys%/TorQApp/*}"
+    if [ -z "${_VTDELEGATED:-}" ] && [ -f "$_vtroot/bin/setenv.sh" ] && [ -f "$_vtroot/bin/torq.sh" ]; then
+      _VTDELEGATED=1
+      . "$_vtroot/bin/setenv.sh"
+      unset _VTDELEGATED _vtphys _vtroot
+      return 0 2>/dev/null || exit 0
+    fi
+    ;;
+esac
+unset _vtphys _vtroot
+
 # --- the two roots -----------------------------------------------------------
 # TorQ core: the checkout that contains torq.q, code/ and config/. There is no sensible
 # default, so either export TORQHOME before sourcing this file or fill in the path below.

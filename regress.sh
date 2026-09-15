@@ -4,13 +4,13 @@
 #   ./regress.sh              every test the environment allows
 #   ./regress.sh --quick      self-contained tests only, never touches a running stack
 #   ./regress.sh -v           stream each test's output instead of summarising
-#   ./regress.sh --no-mutate  skip the one test that rewrites files in var/db
+#   ./regress.sh --no-mutate  skip the one test that rewrites files in the database
 #
 # Tests come in two kinds. SELF-CONTAINED ones build their own database in a scratch
 # directory and clean it up; they never touch var/ and are safe to run any time. The rest
 # need the stack already up because they publish through the live tickerplant.
 #
-# ONE TEST MUTATES var/db: vt-compress-test compresses every partition older than a day and
+# ONE TEST MUTATES THE DATABASE ($KDBDB): vt-compress-test compresses every partition older than a day and
 # leaves it compressed. That is what it is for - it checks a live reader copes with files
 # being rewritten underneath it - and compression is transparent and idempotent, so nothing
 # is lost. But it does change query latency on those partitions. Pass --no-mutate to skip it.
@@ -113,7 +113,7 @@ elif (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -qE ":${IDBPORT}\b
   if [ "$NOMUTATE" = 1 ]; then
     printf "  %-24s SKIP   --no-mutate\n" "vt-compress-test"; SKIP=$((SKIP+1))
   else
-    echo "  (vt-compress-test compresses partitions older than a day in var/db, and leaves them so)"
+    echo "  (vt-compress-test compresses partitions older than a day in ${KDBDB}, and leaves them so)"
     run vt-compress-test ./compress.sh --test
   fi
   run_expect vt-compare-kdb '16 matched, 3 differed' ./testfiles/vt-compare-kdb.sh

@@ -164,7 +164,11 @@ skips column files too small to free a filesystem block:
 
 ## Self test
 
+The test scripts live in the pack itself. From an install, run them from inside it; from a
+clone, from the repository root. Either way they find the right TorQ and database on their own.
+
 ```sh
+cd deploy/TorQApp/latest        # from an install
 ./selftest.sh
 ```
 
@@ -176,27 +180,30 @@ no rebuild. Exits non-zero on failure, so it can be wired into a smoke test.
 ## Regression
 
 ```sh
+cd deploy/TorQApp/latest    # from an install
 ./regress.sh                # every test the environment allows
 ./regress.sh --quick        # self-contained tests only
-./regress.sh --no-mutate    # skip the one test that rewrites files in var/db
+./regress.sh --no-mutate    # skip the one test that rewrites files in the database
 ```
 
+The database is `deploy/data/db` in an install and `var/db` in a clone.
+
 Runs the sixteen assertion tests in `testfiles/` and summarises them. Ten work in a scratch
-directory and never write to `var/db`, so they are safe to run at any time — though four of
-them seed that scratch copy from a partition in `var/db`, and one loads TorQ's `timezone.q`
+directory and never write to the database, so they are safe to run at any time — though four of
+them seed that scratch copy from a partition in the database, and one loads TorQ's `timezone.q`
 and `eodtime.q`, so the stack needs to have run at least once and `TORQHOME` must be set. The
 other six need the stack up, and are skipped with a note if nothing is listening on the IDB
 port (`KDBBASEPORT`+30, so 6030 by default). Exits non-zero if any test fails, and prints the
 log path for each failure.
 
 A test that *cannot run yet* exits **77** and is reported as `SKIP` rather than `FAIL`: the
-database has no partitions, too few instruments, or only one date. On a clone whose stack has
-been up for a few minutes that is the expected state of `vt-compress-test`, which needs the
+database has no partitions, too few instruments, or only one date. On a fresh install, or a clone
+whose stack has been up for a few minutes, that is the expected state of `vt-compress-test`, which needs the
 stack to have crossed a day boundary. Anything reported as `FAIL` is a real failure.
 
 Two of them need explaining. `vt-compress-test` goes through `./compress.sh --test`, which
 swaps in a 1-day age tier — and it leaves those partitions compressed, which is the one thing
-in the suite that changes `var/db`. Re-running is still safe: `vt-damage-test` copies a
+in the suite that changes the database. Re-running is still safe: `vt-damage-test` copies a
 partition and truncates a column in it, and a compressed column raises where an uncompressed
 one short-reads, so it forces its copy back to uncompressed first and asserts the same thing
 on every run. `vt-compare-kdb` is checked against a recorded baseline of
