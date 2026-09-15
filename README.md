@@ -58,6 +58,39 @@ That fetches the latest TorQ release and this pack, and lays them out the way
 `installtorqapp.sh` does for any TorQ application: `deploy/TorQ/latest`,
 `deploy/TorQApp/latest`, `deploy/data`, and `deploy/bin` holding `torq.sh` and `setenv.sh`.
 
+**Install into an empty directory.** `deploy/` is created relative to wherever the script runs,
+and if one is already there — an existing Finance Starter Pack install, say — it is treated as an
+upgrade: `TorQ/latest` and `TorQApp/latest` are repointed at the new install and `bin/setenv.sh` is
+overwritten. The other application stops being the one `deploy/bin/torq.sh` starts, and anything
+whose `TORQHOME` follows `TorQ/latest` silently moves to a different TorQ version. The previous
+versions stay on disk, so it is recoverable, but a fresh directory avoids it entirely:
+
+```sh
+mkdir ~/vtpack && cd ~/vtpack
+```
+
+**Ports.** This pack and the FSP both use base port 6000, so only one of them can run at a time.
+Stop the other stack before starting this one.
+
+**Installing a branch or a fork.** With no release published, `installlatest.sh` takes the tip of
+`main`. To try something not yet merged, point it at the repository and branch:
+
+```sh
+wget https://raw.githubusercontent.com/<owner>/TorQ-Virtual-Tables/<branch>/installlatest.sh
+APP_REPO=<owner>/TorQ-Virtual-Tables bash installlatest.sh --app-ref <branch>
+```
+
+Once a release exists, a plain `bash installlatest.sh` installs the latest *release* rather than the
+tip of `main`, so work merged after that release is not picked up until the next one is cut.
+`--torq-version <x.y.z>` pins TorQ instead of taking its latest release. GitHub caches the raw
+script for five minutes, so a push can take that long to reach `wget`.
+
+**Re-running.** Running it again over an existing `deploy/` keeps `deploy/data`, and regenerates
+`deploy/bin/setenv.sh`, so edits made there are lost. It extracts over the existing version
+directory rather than replacing it, which is `installtorqapp.sh`'s behaviour for every TorQ
+application: files deleted upstream are left behind. A release gets a directory of its own, so
+this only matters for branch installs — delete `deploy/TorQApp/` first for a clean one.
+
 As the FSP does, Linux has no wrapper script: `torq.sh` is the interface, and it builds
 every start line from `appconfig/process.csv`.
 
@@ -68,8 +101,9 @@ every start line from `appconfig/process.csv`.
 ```
 
 Working from a clone instead, with TorQ already available, `torq.sh` has to be told which
-environment to load — without `SETENV` it falls back to TorQ core's own `setenv.sh` and
-reads the wrong `process.csv`, silently:
+environment to load. `torq.sh` looks for `setenv.sh` in its own directory, which for
+`$TORQHOME/torq.sh` is TorQ core's — and that points at an `appconfig/process.csv` a TorQ
+checkout does not have, so every command fails with a missing-file error:
 
 ```sh
 export SETENV=$PWD/setenv.sh
