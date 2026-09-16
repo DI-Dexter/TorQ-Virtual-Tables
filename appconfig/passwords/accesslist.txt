@@ -1,0 +1,7 @@
+compression:pass
+discovery:pass
+feed:pass
+idb:pass
+segmentedtickerplant:pass
+wdb:pass
+admin:admin
