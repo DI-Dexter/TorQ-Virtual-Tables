@@ -12,6 +12,8 @@
 #   the pre-replay delete removing the other writer's day on a restart
 #   a writer binding to the WRONG tickerplant and capturing the other's data
 #
+#   KEEP=1 ./testfiles/vt-twostack-test.sh     leave both stacks up afterwards
+#
 # Runs on its own ports (6200/6300) so it does not disturb a dev stack, and
 # builds its own config, database and logs under a scratch directory.
 #
@@ -36,7 +38,15 @@ done
 
 S=$(mktemp -d /tmp/vt-twostack-XXXX)
 DB="$S/db"
+# KEEP=1 leaves both stacks running and the scratch tree in place, for poking at by hand.
+# The teardown command is printed at the end.
 cleanup () {
+  if [ "${KEEP:-0}" = 1 ]; then
+    echo ""
+    echo "  KEEP=1: both stacks left running. config and logs under $S"
+    echo "  stop with: for n in 1 2; do SETENV=$S/s\$n/env.sh \$TORQHOME/torq.sh stop all; done; rm -rf $S"
+    return
+  fi
   for n in 1 2; do SETENV="$S/s$n/env.sh" "$TORQHOME/torq.sh" stop all >/dev/null 2>&1; done
   sleep 1; rm -rf "$S"
 }
