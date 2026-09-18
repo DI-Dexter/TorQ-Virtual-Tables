@@ -1665,6 +1665,107 @@ table shows one key, and a query returns the rows of *both* directories. Two sta
 the same instrument therefore double-count, silently. Keep the instrument universes of two
 stacks disjoint, or expect to deduplicate downstream. Asserted in `testfiles/vt-inflight-test.q`.
 
+### 8.3.2 Two writers sharing one root
+
+§8.3 adds a second stack with its **own** `savedir`, which is the arrangement to prefer. Two
+writers pointed at the *same* root is a different proposition: it works in steady state, and
+breaks in two places that stock TorQ is entitled to get wrong, because with one writer both
+assumptions hold.
+
+Both fixes are off by default. A single-writer stack runs exactly the code it ran before.
+
+| | flag | file |
+|---|---|---|
+| scoped pre-replay delete | `.wdb.multiwriter` | `code/wdb/vtwritemulti.q` |
+| live-partition guard | `.vtidb.multiwriter` | `code/processes/vtidb.q` |
+
+#### The pre-replay delete removes the other writer's day
+
+On startup TorQ's `clearwdbdata` deletes `.Q.par[savedir;partition;`]` — the whole date
+directory — before replaying its own tickerplant log, then restores only its own rows. With two
+writers over one root, restarting one destroys the other's data for that date. Measured:
+
+```
+before      stack1  869   stack2   902
+after wdb2  stack1  290   stack2  1363    <- 579 stack-1 rows gone
+after wdb1  stack1 2162   stack2   263    <- mutual
+```
+
+Every process in both stacks stayed up, and only the restarting writer logged anything at all
+(`deletewdbdata|removing wdb data ... prior to log replay`). Nothing reports the loss.
+
+With `.wdb.multiwriter` on, each writer records the instrument directories it creates in a
+manifest at `<savedir>/.vtowner/<procname>_<partition>`, and the delete removes only those,
+under every table in the partition. The manifest name contains a dot, so the reader ignores it:
+`datedirs` keeps only date-shaped names and `symfiles` drops anything matching `*.*`.
+
+`clearwdbdata` is defined and called inside `wdb.q`, so there is nothing to wrap. It deletes
+through `.os.deldir`, and `code/wdb/` loads 12 ms before `wdb.q`, which is the window. Only the
+exact partition-root delete is intercepted; housekeeping and `fixpartition`'s rename pass
+straight through.
+
+If a writer has **no** manifest for the partition but another writer's manifest exists at the
+root, it deletes nothing and logs a refusal. A duplicate replay of its own rows is recoverable;
+another stack's deleted day is not.
+
+#### One stack's rollover closes a date the other is still writing
+
+`mutable` is `d>=current`, so a date below `current` is cached and never rescanned. Stock
+`livepart` takes the newest date on disk, so the **first** writer to create tomorrow's directory
+advances `current` for every reader — while the other writer is still filling today. Every
+directory it creates there afterwards is invisible for good, with nothing logged. Recovering it
+needs `.vtidb.dropcache[]` and a sweep.
+
+This does **not** require the stacks to be configured differently. Each stack has its own
+tickerplant firing its own timer, so they never roll at the same instant:
+
+| | measured |
+|---|---|
+| skew between two tickerplants, same roll offset | ~104 ms |
+| skew between the two writers | < 1 ms |
+| a writer stalled across the boundary | seconds to minutes |
+
+With `.vtidb.multiwriter` on, the reader asks every writer which partition it is filling and
+holds `current` at the earliest answer, in both `livepart` and `rollover`. Holding it lower is
+always safe: `mutable` is a `>=` test, so a lower `current` rescans more dates, never fewer.
+
+Verified against a real timer-driven roll with one writer stopped across the boundary
+(`kill -STOP`, resumed 90 s later):
+
+```
+12:06:51.014  stock reader     rollover to 2026.09.18    <- closed the date 88s early
+12:08:19.283  guarded reader   every writer has rolled - advancing to 2026.09.18
+```
+
+The writer handles are opened by the reader with `.vtidb.writertimeout`, not reused from
+`.servers`, whose handles carry no timeout. A writer that is up but not answering — paused,
+swapping, replaying a long log — would otherwise block the synchronous call and with it every
+rebuild: measured at **5 m 12 s** against a stopped writer, during which ordinary queries still
+served in 12 ms. A writer that times out is dropped and simply does not constrain the live
+partition.
+
+#### Deployment rules
+
+1. **Give each stack its own process file** and pass it with `-procfile`. `TORQPROCESSES` is
+   read by `torq.sh`, but a process started directly reads `-procfile`, else
+   `getconfigfile["process.csv"]`. The file should list every writer and every reader, but only
+   that stack's **own** tickerplant: the writer picks its tickerplant with
+   `gethandlebytype[...;`any]`, which takes whatever it knows first.
+2. **Set `.servers.CONNECTIONSFROMDISCOVERY:0b` on the second stack.** The process file is not
+   sufficient on its own. If both stacks share a discovery service, the second writer learns the
+   first stack's tickerplant from it and may subscribe there instead — capturing the other
+   stack's data into its own tree. Measured: both roots holding the same instruments, and the
+   reader serving every row twice. Nothing logs it. (On kdb-x `DISCOVERYCONNECT` is `0b` when
+   `.Q.lim` caps connections, but `CONNECTIONSFROMDISCOVERY` is not.)
+3. **Keep the instrument universes disjoint**, per §8.3.1, and give each stack its own
+   enumeration domain unless they are deliberately coordinated on one.
+4. **Every writer sharing the root must enable the scoped delete.** One stock writer still
+   deletes the whole partition; the manifest cannot defend against a process that does not read
+   it.
+
+`testfiles/vt-multiwriter-test.q` covers both behaviours, including that each is inert when its
+flag is off.
+
 ### 8.4 Under load — measured
 
 Everything in §8.2 was measured on synthetic trees of 10-row partitions, driven by the demo
@@ -2244,3 +2345,5 @@ what makes them worth listing together rather than only in the sections that exp
 | **A disk-full retry re-writes partitions that already succeeded** | Duplicate rows, silently, in the partitions written *before* the failure | Demonstrated (`vt-diskfull-test.q`, §8.5). No dedupe exists — check those partitions after any ENOSPC |
 | **The same `(date;instrument)` under two roots** | Rows served twice, no error, one key | Demonstrated (`vt-inflight-test.q`, §8.3.1). Keep stack instrument universes disjoint |
 | Partitions created during tp log replay are not announced | Up to 30s of staleness after a writer restart; `vtfill` skipped for them | Known, not fixed (VT-21.7) |
+| **A stock writer sharing a root with multi-writer writers** | On its restart it deletes the WHOLE date directory, destroying every other writer's data for that date | Not defendable from the manifest — a process that does not read it cannot be stopped. Every writer on a shared root must set `.wdb.multiwriter` (§8.3.2) |
+| **Two stacks sharing a discovery service** | The second writer can subscribe to the FIRST stack's tickerplant, capturing its data into the second tree; the reader then serves every row twice | Set `.servers.CONNECTIONSFROMDISCOVERY:0b` on the second stack and pass its own `-procfile` (§8.3.2). Measured; nothing logs it |
