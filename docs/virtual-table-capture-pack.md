@@ -1804,8 +1804,23 @@ VTSTACKS=2 ./deploy/bin/torq.sh start all
 `setenv.sh` reads `VTSTACKS` and selects `appconfig/process-2stack.csv` over
 `appconfig/process.csv`. That file is the single-stack topology plus a second tickerplant,
 writer, feed and reader at `{KDBBASEPORT}+100`, with the three flags set per process in the
-`extras` column. It has to be passed on every `torq.sh` call for that stack — `stop` and
-`summary` included — since `torq.sh` only knows about the processes in the file it is given.
+`extras` column.
+
+The choice is then recorded in `$TORQDATAHOME/.vtstacks` and read back when `VTSTACKS` is unset,
+so later calls need nothing:
+
+```sh
+VTSTACKS=2 ./deploy/bin/torq.sh start all
+./deploy/bin/torq.sh summary
+./deploy/bin/torq.sh stop all
+```
+
+It has to be remembered rather than re-typed, because `torq.sh` only knows about the processes in
+the file it is given: a `stop all` that forgot the flag reads `process.csv`, stops the first
+stack, and leaves the second running with nothing managing it. An explicit `VTSTACKS` always
+wins and is written back in turn, and the marker sits with the database rather than the install,
+so two data directories can run different topologies at once. Writing it is best effort — a
+read-only data directory means the flag still works, it just has to be passed each time.
 
 One process file rather than two also means one `-stackid`, so `torq.sh stop all` reaches both
 stacks and `summary` lists all nine processes.

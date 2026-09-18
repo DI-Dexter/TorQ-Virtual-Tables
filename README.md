@@ -112,13 +112,16 @@ arrangement described in §8.3.2 of the design doc, and nothing needs editing to
 
 ```sh
 VTSTACKS=2 ./deploy/bin/torq.sh start all
-VTSTACKS=2 ./deploy/bin/torq.sh summary
-VTSTACKS=2 ./deploy/bin/torq.sh stop all
+./deploy/bin/torq.sh summary                 # remembers - all nine processes
+./deploy/bin/torq.sh stop all                # stops both stacks
 ```
 
-Pass `VTSTACKS=2` on **every** `torq.sh` call for that stack, `stop` and `summary` included — it
-is what picks `appconfig/process-2stack.csv` over `appconfig/process.csv`, and `torq.sh` only
-knows about the processes in the file it is given.
+The choice is recorded in `$TORQDATAHOME/.vtstacks`, so it only has to be given once. It has to
+be remembered rather than re-typed: `torq.sh` only knows about the processes in the file the flag
+picks, so a `stop all` that forgot it would leave the second stack running and unmanaged. Set
+`VTSTACKS` again to change the answer — `VTSTACKS=1` goes back to one stack and is remembered in
+turn. The marker lives with the database, not the install, so two data directories can be running
+different topologies at once.
 
 The second stack captures a disjoint instrument universe (`appconfig/settings/feed2.q`). That is
 required, not cosmetic: the same `(date;instrument)` written under one root by two writers is

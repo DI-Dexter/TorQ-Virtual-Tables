@@ -73,12 +73,26 @@ export KDBAPPCODE="${TORQAPPHOME}/code"
 #   VTSTACKS=2 SETENV=$PWD/setenv.sh $TORQHOME/torq.sh start all
 #   VTSTACKS=2 ./deploy/bin/torq.sh start all        # in an installed tree
 #
-# VTSTACKS has to be set on every torq.sh call for that stack, `stop` and `summary` included:
-# torq.sh only knows about the processes in the file this picks.
+# The choice is REMEMBERED, in $TORQDATAHOME/.vtstacks. Set it once when starting and the
+# later calls need nothing:
+#
+#   VTSTACKS=2 ./deploy/bin/torq.sh start all
+#   ./deploy/bin/torq.sh summary                  # still knows about both stacks
+#   ./deploy/bin/torq.sh stop all                 # stops both
+#
+# That matters more than it looks: torq.sh only knows about the processes in the file this
+# picks, so a `stop all` that forgot the flag would leave the second stack running and
+# unmanaged. Set VTSTACKS explicitly to change the answer - VTSTACKS=1 goes back to one stack
+# and is remembered in turn. The marker lives with the DATABASE, not the install, so two data
+# directories can be running different topologies at once.
 #
 # The second stack captures a DISJOINT instrument universe (appconfig/settings/feed2.q). That is
 # not a nicety: the same (date;instrument) written under one root by two writers is served twice,
 # with no error and nothing in any log (8.3.1).
+_vtmarker="${TORQDATAHOME}/.vtstacks"
+if [ -z "${VTSTACKS:-}" ] && [ -r "$_vtmarker" ]; then
+  VTSTACKS="$(cat "$_vtmarker" 2>/dev/null)"
+fi
 export VTSTACKS="${VTSTACKS:-1}"
 case "$VTSTACKS" in
   1) export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
@@ -87,6 +101,11 @@ case "$VTSTACKS" in
      export VTSTACKS=1
      export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
 esac
+# Record it, best effort. A read-only or missing data directory is not a reason to refuse to
+# start: the flag still works, it just has to be passed each time.
+mkdir -p "${TORQDATAHOME}" 2>/dev/null || true
+printf '%s\n' "$VTSTACKS" > "$_vtmarker" 2>/dev/null || true
+unset _vtmarker
 
 # --- data and logs -----------------------------------------------------------
 # ONE directory for the database. No separate wdb/hdb areas: the writer writes where

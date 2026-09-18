@@ -56,14 +56,35 @@ US='`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT'
 UK='`BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN'
 
 # --- the flag picks the process file, before anything is started ---------------
-sel () { env VTSTACKS="$1" TORQHOME="$TORQHOME" bash -c ". $PACK/setenv.sh >/dev/null 2>&1; basename \$TORQPROCESSES"; }
-[ "$(sel 1)" = "process.csv" ]         && ok "VTSTACKS=1 selects process.csv" \
-                                       || bad "VTSTACKS=1 selected $(sel 1)"
-[ "$(sel 2)" = "process-2stack.csv" ]  && ok "VTSTACKS=2 selects process-2stack.csv" \
-                                       || bad "VTSTACKS=2 selected $(sel 2)"
-# an unset flag must behave exactly as the pack did before it existed
-[ "$(env -u VTSTACKS TORQHOME="$TORQHOME" bash -c ". $PACK/setenv.sh >/dev/null 2>&1; basename \$TORQPROCESSES")" = "process.csv" ] \
-  && ok "an unset VTSTACKS still selects process.csv" || bad "an unset VTSTACKS changed the process file"
+# Every probe runs against its OWN TORQDATAHOME, because sourcing setenv.sh records the
+# choice there - a probe sharing a data directory with the one before it would read that
+# back and prove nothing.
+sel () {                                    # sel <VTSTACKS or "-"> <data dir>
+  local v=$1 d=$2
+  if [ "$v" = "-" ]; then
+    env -u VTSTACKS TORQHOME="$TORQHOME" TORQDATAHOME="$d" \
+        bash -c ". $PACK/setenv.sh >/dev/null 2>&1; basename \$TORQPROCESSES"
+  else
+    env VTSTACKS="$v" TORQHOME="$TORQHOME" TORQDATAHOME="$d" \
+        bash -c ". $PACK/setenv.sh >/dev/null 2>&1; basename \$TORQPROCESSES"
+  fi
+}
+[ "$(sel 1 $S/p1)" = "process.csv" ]        && ok "VTSTACKS=1 selects process.csv" \
+                                            || bad "VTSTACKS=1 selected $(sel 1 $S/p1b)"
+[ "$(sel 2 $S/p2)" = "process-2stack.csv" ] && ok "VTSTACKS=2 selects process-2stack.csv" \
+                                            || bad "VTSTACKS=2 selected $(sel 2 $S/p2b)"
+# an unset flag on a fresh data directory must behave as the pack did before it existed
+[ "$(sel - $S/p3)" = "process.csv" ] && ok "an unset VTSTACKS on a fresh database selects process.csv" \
+                                     || bad "an unset VTSTACKS changed the process file"
+# ...but once chosen it is remembered, so stop/summary do not need the flag again
+[ "$(sel - $S/p2)" = "process-2stack.csv" ] && ok "VTSTACKS=2 is remembered for later calls" \
+                                            || bad "VTSTACKS=2 was not remembered - a later stop all would orphan stack 2"
+[ "$(sel 1 $S/p2)" = "process.csv" ] && ok "an explicit VTSTACKS=1 overrides what was remembered" \
+                                     || bad "VTSTACKS=1 did not override the remembered choice"
+[ "$(sel - $S/p2)" = "process.csv" ] && ok "...and the override is remembered in turn" \
+                                     || bad "the override was not written back"
+[ -f "$S/p2/.vtstacks" ] && ok "the choice is recorded in the data directory, not the install" \
+                         || bad "no .vtstacks marker under the data directory"
 
 # --- start both stacks ---------------------------------------------------------
 TORQ start all >/dev/null 2>&1
