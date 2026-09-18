@@ -28,6 +28,13 @@ partitioncol:@[value;`partitioncol;`instrument];
 wdbtypes:@[value;`wdbtypes;`wdb];
 wdbcheckcycles:@[value;`wdbcheckcycles;3];
 wdbconnsleepintv:@[value;`wdbconnsleepintv;5];
+/ 8.3.2 - ask EVERY writer which partition it is filling, rather than trusting the newest date
+/ on disk. Only needed when more than one writer shares a root: with a single writer the two
+/ answers agree, and the check costs a round trip per rebuild. Default off.
+multiwriter:@[value;`multiwriter;0b];
+/ how long to wait for a writer to answer, in ms. One that does not answer in time simply does
+/ not constrain the live partition - see livepartitions.
+writertimeout:@[value;`writertimeout;1000];
 
 / ---------------------------------------------------------------------------
 / state
@@ -38,6 +45,7 @@ parts:(`$())!();                         / table -> catalogue of (date;<partitio
 opened:(`$())!();                        / table -> opened live views, one per parts row.
                                          / NOTE not called "views" - that is a q keyword
 lastgap:(`$())!();                       / table -> dates missing at the last check (4.6)
+wconn:(`$())!();                         / hpup -> handle, opened with a timeout (8.3.2)
 
 / The enumeration domain. Symbol columns are enumerations against a file at the root, so the
 / domain must cover a directory's values BEFORE it is opened or they resolve wrongly.
@@ -167,7 +175,53 @@ mutable:{[d] $[null current; count[d]#1b; d>=current] };
 / The newest date on disk is a lower bound the writer cannot contradict - it cannot be filling
 / a date older than a directory it created. So take the writer's answer, but never sit behind
 / the disk. NOTE max ignores nulls, which is what makes this work before a writer is found.
-livepart:{[ds] $[count ds; max current,"D"$string last ds; current] };
+/ 8.3.2 - the partition every known writer is currently filling.
+/ .
+/ The handles are OUR own, opened with a timeout, not the shared .servers ones. That is
+/ deliberate: TorQ's handles carry no timeout, so a writer that is alive but not answering -
+/ paused, swapping, replaying a long log - blocks the sync call indefinitely, and with it every
+/ rebuild. Measured: a SIGSTOPped writer blocked rebuild for its whole 5m outage while ordinary
+/ queries still served in 12ms. A writer that times out simply does not constrain the live
+/ partition, which is the safe direction: a lower answer rescans more dates, never fewer.
+writerhpups:{[]
+  @[{[] exec hpup from .servers.SERVERS where proctype in wdbtypes, not null hpup};(::);{[e] 0#`}]
+  };
+
+writerhandle:{[hp]
+  if[hp in key wconn; :wconn hp];
+  wconn[hp]:@[hopen;(hp;writertimeout);
+              {[hp;e] .lg.w[`vtidb;"cannot reach writer ",string[hp],": ",e]; 0Ni}[hp]];
+  wconn hp
+  };
+
+/ a timed-out handle is dropped so the next rebuild redials rather than waiting again
+livepartitions:{[]
+  hps:writerhpups[];
+  if[not count hps; :0#0Nd];
+  raze {[hp]
+    h:writerhandle hp;
+    if[null h; :0#0Nd];
+    r:@[h;".wdb.getpartition[]";
+        {[hp;e] .lg.w[`vtidb;"writer ",string[hp]," did not answer: ",e];
+                @[hclose;wconn hp;()]; wconn::hp _ wconn; 0Nd}[hp]];
+    $[null r; 0#0Nd; enlist r]
+    } each hps
+  };
+
+/ with multiwriter off this is the stock rule: the newest date on disk, never behind current.
+/ With it on, hold at the EARLIEST partition any writer still has open, so a stack that rolls
+/ first cannot make a date immutable while another stack is still writing to it.
+livepart:{[ds]
+  base:$[count ds; max current,"D"$string last ds; current];
+  if[not multiwriter; :base];
+  ps:livepartitions[];
+  if[not count ps; :base];
+  held:min ps,base;
+  if[held<base;
+    .lg.o[`vtidb;"holding live partition at ",string[held]," - disk shows ",string[base],
+                 " but a writer is still filling ",string held]];
+  held
+  };
 
 / discard the whole cache so the next rebuild rescans every date. The manual recovery path for
 / a directory added to a PAST date (§6.1). NOT needed after compression: a trailing-slash view
@@ -271,6 +325,20 @@ rebuild:{[]
 / NOTE the drop must happen BEFORE current moves, or the closed date reads as immutable and
 / build reuses its stale catalogue.
 rollover:{[pt]
+  / 8.3.2 - one writer announcing the new day does not mean every writer has rolled. Advancing
+  / here would make the closed date immutable while another stack is still filling it, and any
+  / directory it creates afterwards would be invisible for good. Rescan instead, and let a
+  / later rollover (or the sweep, through livepart) advance once the others have caught up.
+  if[multiwriter;
+    ps:livepartitions[];
+    if[count ps;
+      newc:min ps,pt;
+      if[newc<=current;
+        .lg.o[`vtidb;"rollover to ",string[pt]," announced, but a writer is still on ",
+                     string[newc]," - holding and rescanning instead of closing it"];
+        rebuild[];
+        :()];
+      pt:newc]];
   .lg.o[`vtidb;"rollover to ",string pt];
   dropdates enlist current;
   current::pt;

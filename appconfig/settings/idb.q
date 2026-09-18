@@ -22,6 +22,16 @@ symsweep:0D00:00:01                      // how often to check the enumeration d
 partitioncol:`sym                       // name the partition column is exposed under. Not
                                          // stored on disk, so it cannot be derived: it must
                                          // match the schema or client queries will not port
+multiwriter:0b                           // 8.3.2 - when several writers share a root, ask each
+                                         // one which partition it is filling instead of taking
+                                         // the newest date on disk. Without it, the first stack
+                                         // to roll closes the date the others are still writing
+                                         // to, and every directory they create afterwards is
+                                         // invisible. Costs one round trip per writer per
+                                         // rebuild, so it stays off for a single-writer stack
+writertimeout:1000                       // ms to wait for a writer's answer. A writer that is
+                                         // up but not answering must not block the rebuild
+
 wdbtypes:`wdb
 wdbcheckcycles:3                         // wait this many cycles for the wdb, then start
 wdbconnsleepintv:5                       // anyway - without a writer the sweep keeps the
