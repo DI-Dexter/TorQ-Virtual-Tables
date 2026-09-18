@@ -43,12 +43,17 @@ served twice, with no error (§8.3.1).
 
 ## Running it
 
-Stack 1 is the pack as shipped, pointed at the example process file:
+Stack 1 is the pack as shipped, pointed at the example process file. `TORQPROCESSES` has to be
+set **inside** the file named by `SETENV`, not in the environment: `torq.sh` sources `SETENV`
+after your shell, so `setenv.sh` overwrites an exported value.
 
 ```sh
-cd <pack>
-TORQPROCESSES=$PWD/examples/multi-writer/process-stack1.csv \
-  SETENV=$PWD/setenv.sh $TORQHOME/torq.sh start all
+cat > stack1-env.sh <<'END'
+. /path/to/pack/setenv.sh
+export TORQPROCESSES=/path/to/pack/examples/multi-writer/process-stack1.csv
+END
+
+SETENV=$PWD/stack1-env.sh $TORQHOME/torq.sh start all
 ```
 
 Stack 2 needs its own `appconfig`, its own `KDBTPLOG`, and its own log and data directories, with

@@ -192,9 +192,17 @@ writerhpups:{[]
     (::);{[e] .lg.w[`vtidb;"could not read .servers.SERVERS: ",e]; 0#`}]
   };
 
+/ credentials, the way .servers does it: a bare :host:port gets USERPASS (or a per-server
+/ override) appended. Without this every query is refused, and the trap reads that as
+/ "no writers" - a healthy single-writer stack.
+writerconn:{[hp]
+  u:@[{.servers.USERPASS^.servers.PASSWORDS x};hp;`];
+  $[(null u) or 2<sum ":"=string hp; hp; hsym `$(string hp),":",string u]
+  };
+
 writerhandle:{[hp]
   if[hp in key wconn; :wconn hp];
-  wconn[hp]:@[hopen;(hp;writertimeout);
+  wconn[hp]:@[hopen;(writerconn hp;writertimeout);
               {[hp;e] .lg.w[`vtidb;"cannot reach writer ",string[hp],": ",e]; 0Ni}[hp]];
   wconn hp
   };

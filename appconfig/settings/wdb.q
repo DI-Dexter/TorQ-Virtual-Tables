@@ -3,7 +3,7 @@
 
 \d .wdb
 savedir:hdbdir:hsym`$getenv`KDBWDB       // one directory; sym file lives at its root
-multiwriter:0b                           // 8.3.2 - set when another writer shares this root.
+multiwriter:@[value;`multiwriter;0b]                           // 8.3.2 - set when another writer shares this root.
                                          // TorQ's pre-replay clearwdbdata deletes the WHOLE
                                          // date directory, which silently destroys the other
                                          // writer's data for that date; with this on, the
