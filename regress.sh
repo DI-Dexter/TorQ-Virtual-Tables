@@ -100,6 +100,8 @@ echo "  logs             : $LOGDIR"
 echo ""
 echo "self-contained (build their own database, safe any time)"
 for t in $SELFCONTAINED; do run "$t" q "testfiles/$t.q"; done
+# starts two real stacks on its own ports (6200/6300), so it is safe alongside a dev stack
+run vt-twostack-test ./testfiles/vt-twostack-test.sh
 
 echo ""
 if [ "$QUICK" = 1 ]; then
