@@ -3,6 +3,13 @@
 
 \d .wdb
 savedir:hdbdir:hsym`$getenv`KDBWDB       // one directory; sym file lives at its root
+multiwriter:0b                           // 8.3.2 - set when another writer shares this root.
+                                         // TorQ's pre-replay clearwdbdata deletes the WHOLE
+                                         // date directory, which silently destroys the other
+                                         // writer's data for that date; with this on, the
+                                         // delete is scoped to the instruments this writer has
+                                         // an ownership manifest for. Off for a single stack,
+                                         // where the stock delete is correct and cheaper
 writedownmode:`partbyattr                // date + instrument directories.
                                          // NB necessary but NOT sufficient - on its own it
                                          // also writes the partition column into the files,
