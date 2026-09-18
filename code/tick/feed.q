@@ -12,8 +12,14 @@
 
 REPLAYINTERVAL:@[value;`REPLAYINTERVAL;0D00:00:00.200];
 
-syms:`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT;
-px:33 27 84 12 20 72 36 51 42 29f;        / starting price per symbol
+/ 8.3.2 - the instrument universe is config, so a second capture stack needs a settings file
+/ rather than a copy of this file. Two stacks sharing a root MUST have disjoint universes: the
+/ same (date;instrument) under two roots is served twice, with no error (8.3.1).
+syms:@[value;`syms;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT];
+/ starting price per instrument. The stock ten are hand-picked; a configured universe of a
+/ different length gets spread-out deterministic prices instead, so only the symbols need setting.
+px:@[value;`px;33 27 84 12 20 72 36 51 42 29f];
+if[not count[px]=count syms; px:10+`float$(7*til count syms) mod 90];
 modes:" ABHILNORYZ";                      / quote mode
 conds:" 89ABCEGJKLNOPRTWZ";               / trade condition
 exch:"NONNONONNN";                        / exchange, one per symbol
