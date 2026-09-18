@@ -1,0 +1,11 @@
+host,port,proctype,procname,U,localtime,g,T,w,load,startwithall,extras,qcmd
+localhost,{KDBBASEPORT}+1,discovery,discovery1,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,0,,,${KDBCODE}/processes/discovery.q,1,,q
+localhost,{KDBBASEPORT},segmentedtickerplant,stp1,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,0,,,${KDBCODE}/processes/segmentedtickerplant.q,1,-schemafile ${TORQAPPHOME}/database.q -tplogdir ${KDBTPLOG},q
+localhost,{KDBBASEPORT}+5,wdb,wdb1,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,1,,,${KDBCODE}/processes/wdb.q,1,-.wdb.multiwriter 1 -.wdb.tickerplantname stp1,q
+localhost,{KDBBASEPORT}+14,feed,feed1,,1,0,,,${KDBAPPCODE}/tick/feed.q,1,-.feed.tickerplantname stp1,q
+localhost,{KDBBASEPORT}+30,idb,idb1,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,1,60,4000,${KDBAPPCODE}/processes/vtidb.q,1,-s 4 -.vtidb.multiwriter 1,q
+localhost,{KDBBASEPORT}+100,segmentedtickerplant,stp2,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,0,,,${KDBCODE}/processes/segmentedtickerplant.q,1,-schemafile ${TORQAPPHOME}/database.q -tplogdir ${KDBTPLOG},q
+localhost,{KDBBASEPORT}+105,wdb,wdb2,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,1,,,${KDBCODE}/processes/wdb.q,1,-.wdb.multiwriter 1 -.wdb.tickerplantname stp2,q
+localhost,{KDBBASEPORT}+114,feed,feed2,,1,0,,,${KDBAPPCODE}/tick/feed.q,1,-.feed.tickerplantname stp2,q
+localhost,{KDBBASEPORT}+130,idb,idb2,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,1,60,4000,${KDBAPPCODE}/processes/vtidb.q,1,-s 4 -.vtidb.multiwriter 1,q
+localhost,{KDBBASEPORT}+40,compression,cmp1,${TORQAPPHOME}/appconfig/passwords/accesslist.txt,1,0,,,${KDBAPPCODE}/processes/vtcompress.q,0,,q

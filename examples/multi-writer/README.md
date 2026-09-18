@@ -7,12 +7,28 @@ pack ships a single stack; this is what changes when a second writer shares the 
 two independent stacks (§8.3), and nothing below is needed. Share a root only when the stacks
 must write into one database.
 
+**If you just want two stacks running, use `VTSTACKS=2`.**
+
+```sh
+VTSTACKS=2 ./deploy/bin/torq.sh start all
+```
+
+That starts both from one process file — `appconfig/process-2stack.csv`, ports derived from
+`{KDBBASEPORT}` with `+100` for stack 2 — and needs no config of your own. It can do that because
+each writer is pinned to its tickerplant by name (`.wdb.tickerplantname`), which is what the two
+separate process files below exist to avoid needing.
+
+What follows is the other arrangement: two stacks that do not know about each other at all, each
+with its own config tree. Use it when the stacks are genuinely independent — different owners,
+different machines, different release cadences — rather than two halves of one deployment.
+
 ## The files
 
 `process-stack1.csv` and `process-stack2.csv` differ in three ways, all of which matter:
 
 - each lists **only its own tickerplant** — the writer picks one with
-  `gethandlebytype[...;`any]`, so a combined file lets a writer subscribe to the wrong stack;
+  `gethandlebytype[...;`any]`, so a combined file lets a writer subscribe to the wrong stack,
+  unless every writer is pinned by name as `process-2stack.csv` does it;
 - each lists **every writer and every reader**, so a reader can ask all writers which partition
   they are filling, and a writer can notify all readers;
 - `startwithall` is `1` only for that stack's own processes.

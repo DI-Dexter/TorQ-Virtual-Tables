@@ -102,6 +102,8 @@ echo "self-contained (build their own database, safe any time)"
 for t in $SELFCONTAINED; do run "$t" q "testfiles/$t.q"; done
 # starts two real stacks on its own ports (6200/6300), so it is safe alongside a dev stack
 run vt-twostack-test ./testfiles/vt-twostack-test.sh
+# the same topology, but from the pack's own config through VTSTACKS=2, on 6400/6500
+run vt-vtstacks-test ./testfiles/vt-vtstacks-test.sh
 
 echo ""
 if [ "$QUICK" = 1 ]; then

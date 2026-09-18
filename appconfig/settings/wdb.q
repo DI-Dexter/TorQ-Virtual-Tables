@@ -41,6 +41,17 @@ startpartition:{[]
 
 getpartition:{[] @[value;`.wdb.currentpartition;{[e] .wdb.startpartition[]}]};
 
+tickerplantname:`                        // 8.3.2 - pin this writer to ONE tickerplant, by name.
+                                         // ` takes whichever tickerplant is found first, which is
+                                         // right with one stack and a coin toss with two: a writer
+                                         // that binds to the other stack's tickerplant captures the
+                                         // other stack's instruments and still looks healthy.
+                                         // Set it from the process file's extras column
+                                         // (-.wdb.tickerplantname stp2). It has to be DECLARED
+                                         // here for that to work - .proc.override[] runs before
+                                         // process code loads and only overrides variables that
+                                         // already exist. see code/wdb/vttickerplant.q
+
 symdomain:`sym                           // this stack's enumeration domain file. One reader
                                          // serving several stacks needs a distinct name per
                                          // stack (`syma, `symb...) - two roots both calling

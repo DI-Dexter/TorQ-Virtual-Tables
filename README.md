@@ -104,6 +104,26 @@ h"select n:count i by sym from trade"
 h"select from trade where sym=`AMD, date=.vtidb.current"
 ```
 
+### Two capture stacks
+
+`VTSTACKS=2` starts a **second** complete capture stack — its own tickerplant, writer, feed and
+reader at `{KDBBASEPORT}+100` — writing into the *same* database root as the first. This is the
+arrangement described in §8.3.2 of the design doc, and nothing needs editing to get it:
+
+```sh
+VTSTACKS=2 ./deploy/bin/torq.sh start all
+VTSTACKS=2 ./deploy/bin/torq.sh summary
+VTSTACKS=2 ./deploy/bin/torq.sh stop all
+```
+
+Pass `VTSTACKS=2` on **every** `torq.sh` call for that stack, `stop` and `summary` included — it
+is what picks `appconfig/process-2stack.csv` over `appconfig/process.csv`, and `torq.sh` only
+knows about the processes in the file it is given.
+
+The second stack captures a disjoint instrument universe (`appconfig/settings/feed2.q`). That is
+required, not cosmetic: the same `(date;instrument)` written under one root by two writers is
+served **twice**, with no error and nothing in any log. Either reader serves both stacks' data.
+
 The partition column is exposed under the name in `partitioncol` (`appconfig/settings/idb.q`),
 set here to `sym` so queries read the same as against a conventional database.
 
@@ -221,7 +241,7 @@ installlatest.sh           download and unpack the latest TorQ release; --deploy
                            -stackid $KDBBASEPORT, so other TorQ stacks on the machine are
                            left alone even though they share the default procnames
 selftest.sh                end-to-end smoke test (testfiles/selftest.q)
-regress.sh                 runs the sixteen assertion tests in testfiles/
+regress.sh                 runs the assertion tests in testfiles/
 loadtest.sh                throughput run on a clean stack (testfiles/loadtest.q). DESTRUCTIVE:
                            it does rm -rf var to start from a known state, so run it on a
                            throwaway copy unless you mean to lose the database
@@ -229,7 +249,9 @@ compress.sh                the weekend compression job; --dry-run and --test
 database.q                 the schema the tickerplant loads
 
 appconfig/
-  process.csv              the process list
+  process.csv              the process list - one capture stack
+  process-2stack.csv       the process list for VTSTACKS=2 - two capture stacks over one
+                           root, every port derived from {KDBBASEPORT} (+100 for stack 2)
   sort.csv                 declares the partition column (sym)
   compressionconfig.csv    the age tier: how old a partition must be before compression
 
@@ -240,10 +262,14 @@ appconfig/
   settings/idb.q           IDB config
   settings/compression.q   the size gate (.cmp.minfilesize)
   settings/feed.q          demo feed config
+  settings/feed2.q         the second stack's instrument universe - loaded only for feed2,
+                           which exists only in process-2stack.csv
   settings/segmentedtickerplant.q
 
 code/
   wdb/vtwrite.q            the writer overrides this design needs (see §4 of the doc)
+  wdb/vtwritemulti.q       scoped pre-replay delete, for a root shared by two writers (§8.3.2)
+  wdb/vttickerplant.q      binds a writer to ONE named tickerplant (§8.3.2)
   processes/vtidb.q        the IDB reader (see §5 of the doc)
   processes/vtcompress.q   the compression job and its --dry-run report (see §7 of the doc)
   tick/feed.q              demo feed, FSP trade/quote generator

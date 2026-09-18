@@ -64,7 +64,29 @@ export KDBHTML="${TORQHOME}/html"
 # --- this pack ---------------------------------------------------------------
 export KDBAPPCONFIG="${TORQAPPHOME}/appconfig"
 export KDBAPPCODE="${TORQAPPHOME}/code"
-export TORQPROCESSES="${KDBAPPCONFIG}/process.csv"
+
+# --- how many capture stacks -------------------------------------------------
+# 1 (the default) is the pack as described everywhere else: one tickerplant, writer, feed and
+# reader. 2 adds a SECOND complete capture stack at {KDBBASEPORT}+100, writing into the SAME
+# database root as the first - the arrangement documented in section 8.3.2.
+#
+#   VTSTACKS=2 SETENV=$PWD/setenv.sh $TORQHOME/torq.sh start all
+#   VTSTACKS=2 ./deploy/bin/torq.sh start all        # in an installed tree
+#
+# VTSTACKS has to be set on every torq.sh call for that stack, `stop` and `summary` included:
+# torq.sh only knows about the processes in the file this picks.
+#
+# The second stack captures a DISJOINT instrument universe (appconfig/settings/feed2.q). That is
+# not a nicety: the same (date;instrument) written under one root by two writers is served twice,
+# with no error and nothing in any log (8.3.1).
+export VTSTACKS="${VTSTACKS:-1}"
+case "$VTSTACKS" in
+  1) export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
+  2) export TORQPROCESSES="${KDBAPPCONFIG}/process-2stack.csv" ;;
+  *) echo "setenv.sh: WARNING - VTSTACKS='${VTSTACKS}' is not 1 or 2, starting one stack" >&2
+     export VTSTACKS=1
+     export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
+esac
 
 # --- data and logs -----------------------------------------------------------
 # ONE directory for the database. No separate wdb/hdb areas: the writer writes where

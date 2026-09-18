@@ -83,11 +83,23 @@ mkquote:{[n]
    n?modes; exch i; n?srcs)
   };
 
+/ 8.3.2 - which tickerplant to publish to. ` takes whichever one is found first, which is right
+/ with one stack and a coin toss with two. Declared in appconfig/settings/feed.q so the process
+/ file's extras column can override it (-.feed.tickerplantname stp2).
+tpname:@[value;`.feed.tickerplantname;`];
+
 / Resolve the handle on EVERY publish rather than caching one at startup. A cached handle dies
 / with the tickerplant, and .servers reconnecting updates its own table, not a copy taken at
 / load time - so a feed written the other way writes to a dead descriptor while every process
 / stays up and looks healthy. See testfiles/vt-tprestart-test.q
-tphandle:{[] .servers.gethandlebytype[`segmentedtickerplant;`any] };
+/ .
+/ Both branches return an EMPTY int list when nothing is available rather than a null handle:
+/ send below tests count, and `first` on an empty table column would hand it 0Ni, which counts 1.
+tphandle:{[]
+  if[null tpname; :.servers.gethandlebytype[`segmentedtickerplant;`any]];
+  r:.servers.getservers[`procname;tpname;()!();1b;1b];
+  $[count r; first exec w from r; 0#0Ni]
+  };
 
 send:{[]
   tp:tphandle[];
