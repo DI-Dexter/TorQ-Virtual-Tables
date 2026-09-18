@@ -183,8 +183,13 @@ mutable:{[d] $[null current; count[d]#1b; d>=current] };
 / rebuild. Measured: a SIGSTOPped writer blocked rebuild for its whole 5m outage while ordinary
 / queries still served in 12ms. A writer that times out simply does not constrain the live
 / partition, which is the safe direction: a lower answer rescans more dates, never fewer.
+/ NOTE `.vtidb.wdbtypes` is written out in full deliberately. Inside a select/exec an
+/ unqualified name resolves in the ROOT namespace, not the one the function was defined in, so
+/ bare `wdbtypes` throws here - and the trap would turn that into "no writers", which reads as
+/ a healthy single-writer stack rather than a fault.
 writerhpups:{[]
-  @[{[] exec hpup from .servers.SERVERS where proctype in wdbtypes, not null hpup};(::);{[e] 0#`}]
+  @[{[] exec hpup from .servers.SERVERS where proctype in .vtidb.wdbtypes, not null hpup};
+    (::);{[e] .lg.w[`vtidb;"could not read .servers.SERVERS: ",e]; 0#`}]
   };
 
 writerhandle:{[hp]

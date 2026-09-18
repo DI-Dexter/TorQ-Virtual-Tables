@@ -43,7 +43,8 @@ for a in "$@"; do
 done
 
 SELFCONTAINED="vt-partition-test vt-rollover-test vt-newtable-test vt-restart-test
-               vt-inflight-test vt-damage-test vt-multistack-test vt-wdbrestart-test
+               vt-inflight-test vt-damage-test vt-multistack-test vt-multiwriter-test
+               vt-wdbrestart-test
                vt-compat-test vt-diskfull-test"
 NEEDSTACK="vt-replay-test vt-symdomain-test vt-collision-test vt-tprestart-test"
 
