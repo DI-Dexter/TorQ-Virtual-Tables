@@ -1860,6 +1860,110 @@ from hand-built config, and `testfiles/vt-vtstacks-test.sh` runs the same topolo
 pack's own config through `VTSTACKS=2` — the second of those asserts the manifests are disjoint,
 which is what catches a writer on the wrong tickerplant.
 
+### 8.3.3 Two stacks on separate roots — the worked setup
+
+§8.3.2 is what to do when two writers *must* share a tree. This is the arrangement to prefer,
+and it needs a different subset of the same three flags. The difference is not obvious, so it is
+worth stating plainly: **separating the roots removes the delete problem and leaves the rollover
+problem exactly where it was.**
+
+| | shared root (§8.3.2) | separate roots |
+|---|---|---|
+| `.wdb.multiwriter` — scoped delete | **required** | not needed |
+| `.wdb.tickerplantname` — the pin | **required** | **required** |
+| `.vtidb.multiwriter` — live-partition guard | **required** | **required**, if one reader serves both roots |
+| `symdomain` — §8.3.1 | leave at `` `sym `` | **required**, one name per root |
+
+The delete stops mattering because each writer is alone at its root, so stock `clearwdbdata` is
+correct again and cheaper. Leaving the flag on is harmless — with no other writer's manifest at
+the root, `vtnomanifest` falls through to the stock full delete — but there is nothing to gain.
+
+The rollover guard still matters because the reader holds **one** `current` across every root it
+serves (`alldates` rakes `datedirs` over `.vtidb.roots`). When the first stack rolls, the reader
+advances, and the other stack's still-open date becomes immutable **in its own tree**.
+
+#### Configuration
+
+TorQ loads settings in the order `default → parentproctype → proctype → procname`, so per-stack
+values go in a file named after the process. No code changes and no extra `-load`.
+
+```q
+/ appconfig/settings/wdb1.q                  / appconfig/settings/wdb2.q
+\d .wdb                                      \d .wdb
+savedir:hdbdir:hsym`$"/path/db1"             savedir:hdbdir:hsym`$"/path/db2"
+symdomain:`syma                              symdomain:`symb
+\d .                                         \d .
+```
+
+```q
+/ appconfig/settings/idb1.q and idb2.q — one reader, both roots
+\d .vtidb
+roots:(hsym`$"/path/db1";hsym`$"/path/db2")
+\d .
+```
+
+In the process file, keep the tickerplant pin and the reader guard and drop the scoped delete:
+
+```
+wdb1 ... -.wdb.tickerplantname stp1
+feed1... -.feed.tickerplantname stp1
+idb1 ... -s 4 -.vtidb.multiwriter 1
+wdb2 ... -.wdb.tickerplantname stp2
+feed2... -.feed.tickerplantname stp2
+idb2 ... -s 4 -.vtidb.multiwriter 1
+```
+
+`VTSTACKS=2 ./deploy/bin/torq.sh start all` then starts both, exactly as for a shared root.
+
+#### Verified
+
+Two stacks, roots `db1` and `db2`, domains `` `syma `` and `` `symb ``, one reader on both:
+
+```
+one reader, both roots        817 rows - 378 from db1, 439 from db2, 20 instruments
+idb1 = idb2                   1b
+both domains loaded           syma 16, symb 16, no `sym` global
+```
+
+A writer restart touches only its own tree, with no scoped delete and nothing to coordinate:
+
+```
+                   before   after
+stack 1 (db1)         509     692     <- untouched, still capturing
+stack 2 (db2)         521     703     <- recovered from its own log
+
+wdb2 log: deletewdbdata|removing wdb data (.../db2/2026.09.23/) prior to log replay
+```
+
+The rollover guard, forced by advancing one writer's `.wdb.currentpartition`:
+
+```
+livepartitions[]              2026.09.23 2026.09.24   <- wdb2 on today, wdb1 moved on
+livepart returns              2026.09.23              <- the minimum
+
+guard ON    current 2026.09.23   a new directory in db2/2026.09.23   1 row, visible
+guard OFF   current 2026.09.24   the same directory on disk          0 rows, invisible
+```
+
+Note the failure only shows for a directory created **after** the freeze. One already in the
+catalogue keeps being served, because freezing loses future directories rather than existing
+ones — which is why the symptom is a missing instrument rather than a missing date.
+
+#### The cost, from §8.3.1
+
+Separate roots mean separate enumeration domains, and `` `syma$`Buy `` and `` `symb$`Buy `` are
+distinct values. A cross-root grouping on a symbol column held inside the files returns one group
+per domain:
+
+```q
+select rows:count i by side from trade          / 4 groups - one per domain
+select rows:count i by value side from trade    / 2 - correct
+```
+
+Filtering, and grouping on the partition column, are unaffected — those are the queries this
+layout exists to serve. The other cost is one extra directory read per date per table on rebuild
+(§8.3: 73 µs → 119 µs at 22 partitions).
+
 ### 8.4 Under load — measured
 
 Everything in §8.2 was measured on synthetic trees of 10-row partitions, driven by the demo
