@@ -33,6 +33,11 @@ still closes the date the other one is filling — in that stack's own tree.
    TorQ loads settings in the order `default -> parentproctype -> proctype -> procname`, so a
    file named after the process applies to that process alone. No code changes, no extra -load.
 
+   These files have no equivalent in the shared-root setup, because there nothing varies per
+   process: both writers want the same savedir and the same domain, and both readers the same
+   root. A file named after the PROCESS is the only place two processes of the same proctype
+   can be given different values, which is what separate roots requires and one root does not.
+
 2. In your process file, pin each writer and feed to their own tickerplant and turn the reader
    guard on. Start from `appconfig/process-2stack.csv` and drop `-.wdb.multiwriter 1`:
 

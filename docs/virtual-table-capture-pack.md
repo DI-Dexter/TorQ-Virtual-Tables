@@ -1887,6 +1887,16 @@ advances, and the other stack's still-open date becomes immutable **in its own t
 TorQ loads settings in the order `default → parentproctype → proctype → procname`, so per-stack
 values go in a file named after the process. No code changes and no extra `-load`.
 
+**Why these files are needed here and not in §8.3.2.** `wdb1` and `wdb2` share the `wdb`
+proctype, so `settings/wdb.q` hands them identical values; a file named after the *process* is
+the only place two processes of the same type can differ. With a shared root nothing has to
+differ — one `savedir`, one enumeration domain, one root for the readers — which is why
+`VTSTACKS=2` works on a fresh install with no configuration at all. Separate roots is the first
+topology where that stops being true, and the four files below are the whole of it.
+
+The pack already ships one file of this kind: `appconfig/settings/feed2.q`, giving the second
+feed its disjoint universe. That is the one thing which varies per process even with one root.
+
 ```q
 / appconfig/settings/wdb1.q                  / appconfig/settings/wdb2.q
 \d .wdb                                      \d .wdb
