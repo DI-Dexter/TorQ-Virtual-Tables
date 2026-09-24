@@ -1847,7 +1847,10 @@ feed a disjoint one. That file is loaded only for procname `feed2`, which exists
    and set `.servers.CONNECTIONSFROMDISCOVERY:0b` on the second stack so it cannot learn the
    first stack's tickerplant from a shared discovery. Both halves are needed — the process file
    alone is not sufficient. (On kdb-x `DISCOVERYCONNECT` is `0b` when `.Q.lim` caps connections,
-   but `CONNECTIONSFROMDISCOVERY` is not.) `examples/multi-writer/` is laid out this way.
+   but `CONNECTIONSFROMDISCOVERY` is not.) This is the arrangement to reach for when the two stacks
+   run on **different machines**, since `torq.sh start all` launches processes on the box it runs
+   on and no single file can start both halves. On one machine `VTSTACKS=2` and
+   `appconfig/process-2stack.csv` do the same job with the pin instead, and are simpler.
 3. **Keep the instrument universes disjoint**, per §8.3.1, and give each stack its own
    enumeration domain unless they are deliberately coordinated on one.
 4. **Every writer sharing the root must enable the scoped delete.** One stock writer still

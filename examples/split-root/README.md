@@ -4,7 +4,7 @@ The arrangement to prefer when you want two stacks. Each writer owns its own tre
 restart cannot touch the other stack's data and nothing has to be coordinated between them.
 
 Full detail and the measurements are in §8.3.3 of `docs/virtual-table-capture-pack.md`.
-For two writers over ONE root, see `../multi-writer/` and §8.3.2 instead.
+For two writers over ONE root, see §8.3.2 and `appconfig/process-2stack.csv` instead.
 
 ## What you need, and what you do not
 
