@@ -30,6 +30,8 @@ still closes the date the other one is filling — in that stack's own tree.
    idb1.q  idb2.q      both roots, on both readers
    ```
 
+   (This directory also holds `process-2stack.csv` for step 2.)
+
    TorQ loads settings in the order `default -> parentproctype -> proctype -> procname`, so a
    file named after the process applies to that process alone. No code changes, no extra -load.
 
@@ -38,17 +40,34 @@ still closes the date the other one is filling — in that stack's own tree.
    root. A file named after the PROCESS is the only place two processes of the same proctype
    can be given different values, which is what separate roots requires and one root does not.
 
-2. In your process file, pin each writer and feed to their own tickerplant and turn the reader
-   guard on. Start from `appconfig/process-2stack.csv` and drop `-.wdb.multiwriter 1`:
+2. Copy `process-2stack.csv` from this directory over `appconfig/process-2stack.csv`.
+
+   ```sh
+   cp examples/split-root/process-2stack.csv appconfig/process-2stack.csv
+   ```
+
+   It is the pack's own two-stack file with **one change**: `-.wdb.multiwriter 1` removed from
+   both writers, because the scoped pre-replay delete has nothing to defend against once each
+   writer is alone at its root. Everything else is unchanged and still required — the
+   tickerplant pins on both writers and both feeds, and `-.vtidb.multiwriter 1` on both readers:
 
    ```
-   wdb1  ...  -.wdb.tickerplantname stp1
-   feed1 ...  -.feed.tickerplantname stp1
-   idb1  ...  -s 4 -.vtidb.multiwriter 1
-   wdb2  ...  -.wdb.tickerplantname stp2
-   feed2 ...  -.feed.tickerplantname stp2
-   idb2  ...  -s 4 -.vtidb.multiwriter 1
+   wdb1   -.wdb.tickerplantname stp1
+   feed1  -.feed.tickerplantname stp1
+   idb1   -s 4 -.vtidb.multiwriter 1
+   wdb2   -.wdb.tickerplantname stp2
+   feed2  -.feed.tickerplantname stp2
+   idb2   -s 4 -.vtidb.multiwriter 1
    ```
+
+   If you would rather edit in place than copy, the change is one substitution:
+
+   ```sh
+   sed -i 's/-\.wdb\.multiwriter 1 //' appconfig/process-2stack.csv
+   ```
+
+   Leaving the flag on is not wrong — the writer would keep a manifest listing everything
+   at its own root and delete exactly that — it is simply work with nothing to protect.
 
 3. Give the second stack a disjoint universe in `appconfig/settings/feed2.q` (`syms`).
 
