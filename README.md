@@ -128,10 +128,11 @@ is used unchanged for the single-stack case, so the default deployment does not 
 generator at all. Ports follow from `KDBBASEPORT`: stack *i* occupies the block at `+100*(i-1)`
 (tickerplant `+0`, writer `+5`, feed `+14`) and reader *j* sits at `+30` of block *j*.
 
-On the **kdb-x community licence, two stacks is the practical limit**: a reader holds about
-three sockets per stack and the licence caps a process at 8, so from three stacks up a reader
-refuses client connections with `'conn` while otherwise running normally. `setenv.sh` warns.
-A commercial licence lifts the cap. See §8.3.2.
+A reader holds about **three sockets per capture stack**, so a licence that caps concurrent
+connections also caps the topology — past the cap a reader keeps capturing but refuses clients
+with `'conn`. `setenv.sh` reads the cap from the licence and warns only if the topology would
+exceed it; on the kdb-x community licence (cap 8) that means two stacks is the practical limit,
+and on a licence reporting `0W` there is no limit at all. See §8.3.2.
 
 Both numbers are recorded in `$TORQDATAHOME/.vtstacks` and `.vtidbs`, so they only have to be
 given once. They have to be remembered rather than re-typed: `torq.sh` only knows about the

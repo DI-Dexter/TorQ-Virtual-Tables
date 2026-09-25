@@ -1782,10 +1782,25 @@ clients: it stays up, keeps capturing, keeps rebuilding — and refuses every `h
 | 2 | 7 | 1 |
 | 3 | 10 | **none — refuses connections** |
 
-**Two stacks is the practical limit on the community licence.** A commercial licence lifts the
-cap and the topology scales as far as the hardware does. `setenv.sh` warns when `VTSTACKS>=3`.
-Adding readers with `VTIDBS` does not help — each new reader opens its own set — but it does
-spread *client* connections across more processes, which is what it is for.
+**On a licence with no connection cap the topology scales as far as the hardware does** —
+`.Q.lim[]` reports `0W` for `conns` and none of the above applies. `setenv.sh` reads the cap
+from the licence at startup and warns only when the topology would actually exceed it, so a
+commercial deployment sees nothing.
+
+Check which you have with:
+
+```q
+v:.Q.lim[]`conns; $[-7h=type v; v; v`lim]        / 0W = no cap
+.z.l[7]                                          / the licence string names the tier
+```
+
+`.Q.lim[]` has two shapes — a plain dictionary on a capped licence, where `conns` is a number,
+and a keyed table with `cur` and `lim` columns where it is a row — which is why the expression
+above tests the type.
+
+Adding readers with `VTIDBS` does not raise the ceiling — each new reader opens its own set of
+writer handles — but it does spread *client* connections across more processes, which is what
+it is for.
 
 The remembered shape lives in `$TORQDATAHOME/.vtstacks` and `.vtidbs`. It has to be
 remembered rather than re-typed, because `torq.sh` derives *everything* — start and stop alike

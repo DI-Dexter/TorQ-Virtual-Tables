@@ -99,14 +99,31 @@ export VTSTACKS VTIDBS
 
 # CONNECTION BUDGET. A reader holds roughly 3 sockets per capture stack - two outbound to each
 # writer (one from .servers, one for the live-partition poll) and one inbound as that writer
-# registers - plus one to discovery. The kdb-x community licence caps a process at 8 concurrent
-# connections (.Q.lim[][`conns]), so from three stacks upwards a reader has nothing left for
-# clients: it stays up, keeps capturing, and refuses every hopen with 'conn.
-if [ "$VTSTACKS" -ge 3 ]; then
-  echo "setenv.sh: WARNING - VTSTACKS=${VTSTACKS} needs ~$((3 * VTSTACKS + 1)) connections per reader." >&2
-  echo "setenv.sh:           the kdb-x community licence caps a process at 8, so readers may" >&2
-  echo "setenv.sh:           refuse client connections with 'conn. Two stacks is the practical" >&2
-  echo "setenv.sh:           limit on that licence; a commercial one lifts the cap." >&2
+# registers - plus one to discovery. A licence that caps concurrent connections therefore caps
+# the topology: past the cap a reader stays up, keeps capturing, and refuses every hopen with
+# 'conn, which reads like the process being down when it is anything but.
+#
+# The cap is read from the licence rather than assumed, because it differs by licence and
+# .Q.lim[] has two shapes - a plain dictionary where conns is a number, and a keyed table with
+# cur and lim columns where it is a row. An unlimited licence reports 0W and says nothing.
+if [ "$VTSTACKS" -ge 3 ] && command -v "${QCMD:-q}" >/dev/null 2>&1; then
+  _vtneed=$(( 3 * VTSTACKS + 1 ))
+  _vtcap=$("${QCMD:-q}" -q 2>/dev/null <<'VTLIMEOF'
+v:.Q.lim[]`conns;
+-1 string $[-7h=type v; v; v`lim];
+exit 0;
+VTLIMEOF
+)
+  case "$_vtcap" in
+    ''|*[!0-9]*) : ;;                         # 0W, or q unavailable - no cap to warn about
+    *) if [ "$_vtcap" -lt "$_vtneed" ]; then
+         echo "setenv.sh: WARNING - VTSTACKS=${VTSTACKS} needs ~${_vtneed} connections per reader, but this" >&2
+         echo "setenv.sh:           licence caps a process at ${_vtcap}. Readers will keep capturing and" >&2
+         echo "setenv.sh:           refuse client connections with 'conn. Reduce VTSTACKS, or use a" >&2
+         echo "setenv.sh:           licence without a connection cap." >&2
+       fi ;;
+  esac
+  unset _vtneed _vtcap
 fi
 
 # the root a stack writes into, and the enumeration domain it enumerates against. With one
