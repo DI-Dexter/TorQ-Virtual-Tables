@@ -73,9 +73,8 @@ vteodsort:{[dir;pt;tablist;writedownmode;mergelimits;hdbsettings;mergemethod]
   notifyidbs[`.vtidb.rollover;enlist pt+1];
   };
 
-/ 8.3.1 - name this stack's enumeration domain. A reader binds a global named after the file,
-/ so two stacks both calling it `sym cannot be served by one reader.
-/ .Q.en[d;t] is .Q.ens[d;t;`sym], so redirecting .Q.en covers every enumeration site at once.
+/ 8.3.1 - enumerate against this stack's own domain file. A reader binds a global named after
+/ the file, so two stacks both calling it `sym cannot be served by one reader.
 applysymdomain:{[]
   if[symdomain~`sym; :()];
   .lg.o[`vtwrite;"enumerating against `",string[symdomain]," instead of `sym (8.3.1)"];
