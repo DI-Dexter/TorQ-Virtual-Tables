@@ -66,27 +66,15 @@ export KDBAPPCONFIG="${TORQAPPHOME}/appconfig"
 export KDBAPPCODE="${TORQAPPHOME}/code"
 
 # --- topology ----------------------------------------------------------------
-# VTSTACKS  how many capture stacks. Each is a tickerplant + feed + writer, and each writes
-#           into its OWN database root - so two writers never share a partition to delete,
-#           and never compete for the same disk. 1 (the default) is the pack as described
-#           everywhere else.
-# VTIDBS    how many readers. Each reader attaches EVERY root, so any one of them answers
-#           for the whole estate. Readers are interchangeable; add them for query capacity.
+# VTSTACKS  how many capture stacks (tickerplant + feed + writer), each with its own root.
+# VTIDBS    how many readers. Every reader attaches every root.
 #
-#   VTSTACKS=2 ./deploy/bin/torq.sh start all               # two stacks, one reader
-#   VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all      # three stacks, two readers
+#   VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all
 #
-# Both are REMEMBERED, in $TORQDATAHOME. Set them once when starting and later calls need
-# nothing - which matters because torq.sh only knows about the processes in the file this
-# picks, so a `stop all` that forgot would leave processes running and unmanaged.
-#
-# Anything other than 1x1 is GENERATED into $TORQDATAHOME/process-generated.csv. The shipped
-# appconfig/process.csv is used unchanged for the 1x1 case, so the default deployment does
-# not depend on the generator at all.
-#
-# PORTS, from KDBBASEPORT: stack i occupies the block at +100*(i-1) - tickerplant at +0,
-# writer at +5, feed at +14 - and reader j sits at +30 of block j. discovery is at +1 and
-# the compression process at +40, both in block 1.
+# Both are remembered in $TORQDATAHOME, so stop and summary see the same processes as start.
+# Anything other than 1x1 is generated into $TORQDATAHOME/process-generated.csv; the shipped
+# appconfig/process.csv is used as-is for 1x1. Ports: stack i at +100*(i-1) with tickerplant
+# +0, writer +5, feed +14; reader j at +30 of block j; discovery +1, compression +40.
 _vtsfile="${TORQDATAHOME}/.vtstacks"
 _vtifile="${TORQDATAHOME}/.vtidbs"
 if [ -z "${VTSTACKS:-}" ] && [ -r "$_vtsfile" ]; then VTSTACKS="$(cat "$_vtsfile" 2>/dev/null)"; fi
@@ -97,15 +85,10 @@ case "$VTSTACKS" in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTSTACKS='${VTSTAC
 case "$VTIDBS"   in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTIDBS='${VTIDBS}' is not a positive integer, using 1" >&2;   VTIDBS=1 ;; esac
 export VTSTACKS VTIDBS
 
-# CONNECTION BUDGET. A reader holds roughly 3 sockets per capture stack - two outbound to each
-# writer (one from .servers, one for the live-partition poll) and one inbound as that writer
-# registers - plus one to discovery. A licence that caps concurrent connections therefore caps
-# the topology: past the cap a reader stays up, keeps capturing, and refuses every hopen with
-# 'conn, which reads like the process being down when it is anything but.
-#
-# The cap is read from the licence rather than assumed, because it differs by licence and
-# .Q.lim[] has two shapes - a plain dictionary where conns is a number, and a keyed table with
-# cur and lim columns where it is a row. An unlimited licence reports 0W and says nothing.
+# A reader holds about 3 connections per capture stack. Where the licence caps connections,
+# a reader past the cap keeps capturing but refuses clients with 'conn. The cap is read from
+# the licence rather than assumed: .Q.lim[] gives conns as a number on a capped licence and
+# as a cur/lim row on an uncapped one, which is what the type test below is for.
 if [ "$VTSTACKS" -ge 3 ] && command -v "${QCMD:-q}" >/dev/null 2>&1; then
   _vtneed=$(( 3 * VTSTACKS + 1 ))
   _vtcap=$("${QCMD:-q}" -q 2>/dev/null <<'VTLIMEOF'
@@ -126,10 +109,8 @@ VTLIMEOF
   unset _vtneed _vtcap
 fi
 
-# the root a stack writes into, and the enumeration domain it enumerates against. With one
-# stack both are the stock defaults, so a single-stack tree is byte-for-byte what Part 1 laid
-# down. With several, each gets its own - two roots sharing a domain NAME cannot be read
-# together, because the reader binds a global named after the file (8.3.1).
+# One stack keeps the stock root and domain. Several get one each: the reader binds a global
+# named after the domain file, so two roots sharing a name cannot be read together (8.3.1).
 vtroot   () { if [ "$VTSTACKS" -gt 1 ]; then echo "${TORQDATAHOME}/db$1"; else echo "${TORQDATAHOME}/db"; fi; }
 vtdomain () { if [ "$VTSTACKS" -gt 1 ]; then echo "sym$1"; else echo "sym"; fi; }
 vtport   () { if [ "$1" = 0 ]; then echo "{KDBBASEPORT}"; else echo "{KDBBASEPORT}+$1"; fi; }
@@ -145,15 +126,12 @@ vtgenprocesses () {
   _i=1
   while [ "$_i" -le "$VTSTACKS" ]; do
     _off=$(( 100 * (_i - 1) ))
-    # the tickerplant pin is on both writer and feed, and is NOT optional with several
-    # stacks: a lookup by process type takes whichever is found first, so a writer can bind
-    # to another stack's tickerplant and capture its instruments while looking healthy.
+    # pin writer and feed to their own tickerplant - a lookup by process type takes
+    # whichever is found first, which is a coin toss with several stacks
     _wx="-.wdb.tickerplantname stp${_i}"
     _fx="-.feed.tickerplantname stp${_i}"
     if [ "$VTSTACKS" -gt 1 ]; then
-      # savedir AND hdbdir together - hdbdir is what .Q.en writes the enumeration file to,
-      # so overriding savedir alone puts every domain in the default directory and the
-      # readers hand back raw enumeration indices instead of symbols, silently.
+      # savedir and hdbdir must move together: hdbdir is where .Q.en writes the domain file
       _r="$(vtroot $_i)"
       _wx="${_wx} -.wdb.savedir :${_r} -.wdb.hdbdir :${_r} -.wdb.symdomain $(vtdomain $_i)"
       _fx="${_fx} -.feed.stackid ${_i} -.feed.nstacks ${VTSTACKS}"
@@ -167,10 +145,8 @@ vtgenprocesses () {
   _j=1
   while [ "$_j" -le "$VTIDBS" ]; do
     _off=$(( 100 * (_j - 1) + 30 ))
-    # every reader attaches every root. .vtidb.multiwriter is required whenever there is
-    # more than one writer, INCLUDING with separate roots: a reader holds ONE live partition
-    # across all the roots it serves, so the first stack to roll would otherwise close a date
-    # another stack is still filling, and every directory it creates after that is invisible.
+    # every reader attaches every root. .vtidb.multiwriter is needed whenever there is more
+    # than one writer, separate roots included: one live partition is held across all roots
     _ix="-s 4"
     if [ "$VTSTACKS" -gt 1 ]; then _ix="${_ix} -.vtidb.multiwriter 1 -.vtidb.roots${_roots}"; fi
     echo "localhost,$(vtport $_off),idb,idb${_j},${_acl},1,1,60,4000,${TORQAPPHOME}/code/processes/vtidb.q,1,${_ix},q"
@@ -218,11 +194,8 @@ export QCON="${QCON:-qcon}"
 
 export KDBBASEPORT="${KDBBASEPORT:-6000}"
 
-# Create the roots that will actually be written to. With one stack that is KDBDB; with
-# several, each writer has its own and KDBDB is vestigial - creating it anyway leaves an
-# empty directory that looks like somewhere data might be going, and would hide the very
-# leak this pack cares about (a writer whose hdbdir was not moved with its savedir writes
-# its enumeration file there, silently).
+# Create only the roots that will be written to. With several stacks KDBDB is unused, and an
+# empty directory there would look like somewhere data might be going.
 mkdir -p "${KDBLOG}" "${KDBTPLOG}"
 if [ "$VTSTACKS" -gt 1 ]; then
   _i=1; while [ "$_i" -le "$VTSTACKS" ]; do mkdir -p "$(vtroot $_i)"; _i=$((_i+1)); done

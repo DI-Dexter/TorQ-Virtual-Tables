@@ -1802,6 +1802,30 @@ Adding readers with `VTIDBS` does not raise the ceiling — each new reader open
 writer handles — but it does spread *client* connections across more processes, which is what
 it is for.
 
+#### Changing the shape of a running estate
+
+Both numbers are remembered separately, so either can be raised on its own. `start all` skips
+what is already running and starts only the difference:
+
+```sh
+VTSTACKS=2 ./deploy/bin/torq.sh start all      # two stacks, one reader
+VTIDBS=3   ./deploy/bin/torq.sh start all      # ...now three readers, stacks untouched
+```
+
+**Readers can be added to a live estate; stacks cannot.** A new reader is launched with the
+current root list, so it attaches everything. A new *stack* starts writing into a root the
+existing readers were never given — they hold `.vtidb.roots` from their own command line and
+will not see it. Raising `VTSTACKS` therefore needs the readers restarted afterwards, or the
+new stack captures into a root nobody reads.
+
+Neither number can be lowered against a running estate. A smaller shape regenerates a smaller
+file, and the processes no longer in it keep running with nothing tracking them. Stop first:
+
+```sh
+./deploy/bin/torq.sh stop all
+VTIDBS=1 ./deploy/bin/torq.sh start all
+```
+
 The remembered shape lives in `$TORQDATAHOME/.vtstacks` and `.vtidbs`. It has to be
 remembered rather than re-typed, because `torq.sh` derives *everything* — start and stop alike
 — from the process file it picked, so a `stop all` that forgot would leave processes running
