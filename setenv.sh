@@ -65,47 +65,119 @@ export KDBHTML="${TORQHOME}/html"
 export KDBAPPCONFIG="${TORQAPPHOME}/appconfig"
 export KDBAPPCODE="${TORQAPPHOME}/code"
 
-# --- how many capture stacks -------------------------------------------------
-# 1 (the default) is the pack as described everywhere else: one tickerplant, writer, feed and
-# reader. 2 adds a SECOND complete capture stack at {KDBBASEPORT}+100, writing into the SAME
-# database root as the first - the arrangement documented in section 8.3.2.
+# --- topology ----------------------------------------------------------------
+# VTSTACKS  how many capture stacks. Each is a tickerplant + feed + writer, and each writes
+#           into its OWN database root - so two writers never share a partition to delete,
+#           and never compete for the same disk. 1 (the default) is the pack as described
+#           everywhere else.
+# VTIDBS    how many readers. Each reader attaches EVERY root, so any one of them answers
+#           for the whole estate. Readers are interchangeable; add them for query capacity.
 #
-#   VTSTACKS=2 SETENV=$PWD/setenv.sh $TORQHOME/torq.sh start all
-#   VTSTACKS=2 ./deploy/bin/torq.sh start all        # in an installed tree
+#   VTSTACKS=2 ./deploy/bin/torq.sh start all               # two stacks, one reader
+#   VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all      # three stacks, two readers
 #
-# The choice is REMEMBERED, in $TORQDATAHOME/.vtstacks. Set it once when starting and the
-# later calls need nothing:
+# Both are REMEMBERED, in $TORQDATAHOME. Set them once when starting and later calls need
+# nothing - which matters because torq.sh only knows about the processes in the file this
+# picks, so a `stop all` that forgot would leave processes running and unmanaged.
 #
-#   VTSTACKS=2 ./deploy/bin/torq.sh start all
-#   ./deploy/bin/torq.sh summary                  # still knows about both stacks
-#   ./deploy/bin/torq.sh stop all                 # stops both
+# Anything other than 1x1 is GENERATED into $TORQDATAHOME/process-generated.csv. The shipped
+# appconfig/process.csv is used unchanged for the 1x1 case, so the default deployment does
+# not depend on the generator at all.
 #
-# That matters more than it looks: torq.sh only knows about the processes in the file this
-# picks, so a `stop all` that forgot the flag would leave the second stack running and
-# unmanaged. Set VTSTACKS explicitly to change the answer - VTSTACKS=1 goes back to one stack
-# and is remembered in turn. The marker lives with the DATABASE, not the install, so two data
-# directories can be running different topologies at once.
-#
-# The second stack captures a DISJOINT instrument universe (appconfig/settings/feed2.q). That is
-# not a nicety: the same (date;instrument) written under one root by two writers is served twice,
-# with no error and nothing in any log (8.3.1).
-_vtmarker="${TORQDATAHOME}/.vtstacks"
-if [ -z "${VTSTACKS:-}" ] && [ -r "$_vtmarker" ]; then
-  VTSTACKS="$(cat "$_vtmarker" 2>/dev/null)"
+# PORTS, from KDBBASEPORT: stack i occupies the block at +100*(i-1) - tickerplant at +0,
+# writer at +5, feed at +14 - and reader j sits at +30 of block j. discovery is at +1 and
+# the compression process at +40, both in block 1.
+_vtsfile="${TORQDATAHOME}/.vtstacks"
+_vtifile="${TORQDATAHOME}/.vtidbs"
+if [ -z "${VTSTACKS:-}" ] && [ -r "$_vtsfile" ]; then VTSTACKS="$(cat "$_vtsfile" 2>/dev/null)"; fi
+if [ -z "${VTIDBS:-}"   ] && [ -r "$_vtifile" ]; then VTIDBS="$(cat "$_vtifile" 2>/dev/null)"; fi
+VTSTACKS="${VTSTACKS:-1}"
+VTIDBS="${VTIDBS:-1}"
+case "$VTSTACKS" in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTSTACKS='${VTSTACKS}' is not a positive integer, using 1" >&2; VTSTACKS=1 ;; esac
+case "$VTIDBS"   in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTIDBS='${VTIDBS}' is not a positive integer, using 1" >&2;   VTIDBS=1 ;; esac
+export VTSTACKS VTIDBS
+
+# CONNECTION BUDGET. A reader holds roughly 3 sockets per capture stack - two outbound to each
+# writer (one from .servers, one for the live-partition poll) and one inbound as that writer
+# registers - plus one to discovery. The kdb-x community licence caps a process at 8 concurrent
+# connections (.Q.lim[][`conns]), so from three stacks upwards a reader has nothing left for
+# clients: it stays up, keeps capturing, and refuses every hopen with 'conn.
+if [ "$VTSTACKS" -ge 3 ]; then
+  echo "setenv.sh: WARNING - VTSTACKS=${VTSTACKS} needs ~$((3 * VTSTACKS + 1)) connections per reader." >&2
+  echo "setenv.sh:           the kdb-x community licence caps a process at 8, so readers may" >&2
+  echo "setenv.sh:           refuse client connections with 'conn. Two stacks is the practical" >&2
+  echo "setenv.sh:           limit on that licence; a commercial one lifts the cap." >&2
 fi
-export VTSTACKS="${VTSTACKS:-1}"
-case "$VTSTACKS" in
-  1) export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
-  2) export TORQPROCESSES="${KDBAPPCONFIG}/process-2stack.csv" ;;
-  *) echo "setenv.sh: WARNING - VTSTACKS='${VTSTACKS}' is not 1 or 2, starting one stack" >&2
-     export VTSTACKS=1
-     export TORQPROCESSES="${KDBAPPCONFIG}/process.csv" ;;
-esac
-# Record it, best effort. A read-only or missing data directory is not a reason to refuse to
-# start: the flag still works, it just has to be passed each time.
+
+# the root a stack writes into, and the enumeration domain it enumerates against. With one
+# stack both are the stock defaults, so a single-stack tree is byte-for-byte what Part 1 laid
+# down. With several, each gets its own - two roots sharing a domain NAME cannot be read
+# together, because the reader binds a global named after the file (8.3.1).
+vtroot   () { if [ "$VTSTACKS" -gt 1 ]; then echo "${TORQDATAHOME}/db$1"; else echo "${TORQDATAHOME}/db"; fi; }
+vtdomain () { if [ "$VTSTACKS" -gt 1 ]; then echo "sym$1"; else echo "sym"; fi; }
+vtport   () { if [ "$1" = 0 ]; then echo "{KDBBASEPORT}"; else echo "{KDBBASEPORT}+$1"; fi; }
+
+vtgenprocesses () {
+  _acl="${TORQAPPHOME}/appconfig/passwords/accesslist.txt"
+  _roots=""
+  _i=1; while [ "$_i" -le "$VTSTACKS" ]; do _roots="${_roots} :$(vtroot $_i)"; _i=$((_i+1)); done
+
+  echo "host,port,proctype,procname,U,localtime,g,T,w,load,startwithall,extras,qcmd"
+  echo "localhost,$(vtport 1),discovery,discovery1,${_acl},1,0,,,${KDBCODE}/processes/discovery.q,1,,q"
+
+  _i=1
+  while [ "$_i" -le "$VTSTACKS" ]; do
+    _off=$(( 100 * (_i - 1) ))
+    # the tickerplant pin is on both writer and feed, and is NOT optional with several
+    # stacks: a lookup by process type takes whichever is found first, so a writer can bind
+    # to another stack's tickerplant and capture its instruments while looking healthy.
+    _wx="-.wdb.tickerplantname stp${_i}"
+    _fx="-.feed.tickerplantname stp${_i}"
+    if [ "$VTSTACKS" -gt 1 ]; then
+      # savedir AND hdbdir together - hdbdir is what .Q.en writes the enumeration file to,
+      # so overriding savedir alone puts every domain in the default directory and the
+      # readers hand back raw enumeration indices instead of symbols, silently.
+      _r="$(vtroot $_i)"
+      _wx="${_wx} -.wdb.savedir :${_r} -.wdb.hdbdir :${_r} -.wdb.symdomain $(vtdomain $_i)"
+      _fx="${_fx} -.feed.stackid ${_i} -.feed.nstacks ${VTSTACKS}"
+    fi
+    echo "localhost,$(vtport $_off),segmentedtickerplant,stp${_i},${_acl},1,0,,,${KDBCODE}/processes/segmentedtickerplant.q,1,-schemafile ${TORQAPPHOME}/database.q -tplogdir ${TORQDATAHOME}/tplogs,q"
+    echo "localhost,$(vtport $((_off+5))),wdb,wdb${_i},${_acl},1,1,,,${KDBCODE}/processes/wdb.q,1,${_wx},q"
+    echo "localhost,$(vtport $((_off+14))),feed,feed${_i},,1,0,,,${TORQAPPHOME}/code/tick/feed.q,1,${_fx},q"
+    _i=$((_i+1))
+  done
+
+  _j=1
+  while [ "$_j" -le "$VTIDBS" ]; do
+    _off=$(( 100 * (_j - 1) + 30 ))
+    # every reader attaches every root. .vtidb.multiwriter is required whenever there is
+    # more than one writer, INCLUDING with separate roots: a reader holds ONE live partition
+    # across all the roots it serves, so the first stack to roll would otherwise close a date
+    # another stack is still filling, and every directory it creates after that is invisible.
+    _ix="-s 4"
+    if [ "$VTSTACKS" -gt 1 ]; then _ix="${_ix} -.vtidb.multiwriter 1 -.vtidb.roots${_roots}"; fi
+    echo "localhost,$(vtport $_off),idb,idb${_j},${_acl},1,1,60,4000,${TORQAPPHOME}/code/processes/vtidb.q,1,${_ix},q"
+    _j=$((_j+1))
+  done
+
+  echo "localhost,$(vtport 40),compression,cmp1,${_acl},1,0,,,${TORQAPPHOME}/code/processes/vtcompress.q,0,,q"
+}
+
 mkdir -p "${TORQDATAHOME}" 2>/dev/null || true
-printf '%s\n' "$VTSTACKS" > "$_vtmarker" 2>/dev/null || true
-unset _vtmarker
+printf '%s\n' "$VTSTACKS" > "$_vtsfile" 2>/dev/null || true
+printf '%s\n' "$VTIDBS"   > "$_vtifile" 2>/dev/null || true
+
+if [ "$VTSTACKS" = 1 ] && [ "$VTIDBS" = 1 ]; then
+  export TORQPROCESSES="${KDBAPPCONFIG}/process.csv"
+else
+  export TORQPROCESSES="${TORQDATAHOME}/process-generated.csv"
+  if ! vtgenprocesses > "${TORQPROCESSES}.tmp" 2>/dev/null; then
+    echo "setenv.sh: ERROR - could not write ${TORQPROCESSES}" >&2
+  else
+    mv -f "${TORQPROCESSES}.tmp" "${TORQPROCESSES}"
+  fi
+fi
+unset _vtsfile _vtifile
 
 # --- data and logs -----------------------------------------------------------
 # ONE directory for the database. No separate wdb/hdb areas: the writer writes where
@@ -129,4 +201,15 @@ export QCON="${QCON:-qcon}"
 
 export KDBBASEPORT="${KDBBASEPORT:-6000}"
 
-mkdir -p "${KDBDB}" "${KDBLOG}" "${KDBTPLOG}"
+# Create the roots that will actually be written to. With one stack that is KDBDB; with
+# several, each writer has its own and KDBDB is vestigial - creating it anyway leaves an
+# empty directory that looks like somewhere data might be going, and would hide the very
+# leak this pack cares about (a writer whose hdbdir was not moved with its savedir writes
+# its enumeration file there, silently).
+mkdir -p "${KDBLOG}" "${KDBTPLOG}"
+if [ "$VTSTACKS" -gt 1 ]; then
+  _i=1; while [ "$_i" -le "$VTSTACKS" ]; do mkdir -p "$(vtroot $_i)"; _i=$((_i+1)); done
+  unset _i
+else
+  mkdir -p "${KDBDB}"
+fi

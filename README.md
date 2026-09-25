@@ -104,28 +104,56 @@ h"select n:count i by sym from trade"
 h"select from trade where sym=`AMD, date=.vtidb.current"
 ```
 
-### Two capture stacks
+### Several capture stacks
 
-`VTSTACKS=2` starts a **second** complete capture stack — its own tickerplant, writer, feed and
-reader at `{KDBBASEPORT}+100` — writing into the *same* database root as the first. This is the
-arrangement described in §8.3.2 of the design doc, and nothing needs editing to get it:
+`VTSTACKS=n` starts **n** complete capture stacks — each with its own tickerplant, feed and
+writer, and each writing into its **own database root**. `VTIDBS=m` starts **m** readers, and
+every reader attaches every root, so any one of them answers for the whole estate. Nothing
+needs editing to get either:
 
 ```sh
-VTSTACKS=2 ./deploy/bin/torq.sh start all
-./deploy/bin/torq.sh summary                 # remembers - all nine processes
-./deploy/bin/torq.sh stop all                # stops both stacks
+VTSTACKS=2 ./deploy/bin/torq.sh start all               # two stacks, one reader
+VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all      # three stacks, two readers
+./deploy/bin/torq.sh summary                            # remembers the shape
+./deploy/bin/torq.sh stop all                           # stops all of it
 ```
 
-The choice is recorded in `$TORQDATAHOME/.vtstacks`, so it only has to be given once. It has to
-be remembered rather than re-typed: `torq.sh` only knows about the processes in the file the flag
-picks, so a `stop all` that forgot it would leave the second stack running and unmanaged. Set
-`VTSTACKS` again to change the answer — `VTSTACKS=1` goes back to one stack and is remembered in
-turn. The marker lives with the database, not the install, so two data directories can be running
-different topologies at once.
+Separate roots are the point, not an option. Two writers sharing one root compete for the same
+IO, and — worse — TorQ's pre-replay delete removes the whole date directory, so restarting one
+writer destroys the other's day. A root per writer removes both by construction.
 
-The second stack captures a disjoint instrument universe (`appconfig/settings/feed2.q`). That is
-required, not cosmetic: the same `(date;instrument)` written under one root by two writers is
-served **twice**, with no error and nothing in any log. Either reader serves both stacks' data.
+Anything other than one stack and one reader is **generated** into
+`$TORQDATAHOME/process-generated.csv` when `setenv.sh` runs; the shipped `appconfig/process.csv`
+is used unchanged for the single-stack case, so the default deployment does not depend on the
+generator at all. Ports follow from `KDBBASEPORT`: stack *i* occupies the block at `+100*(i-1)`
+(tickerplant `+0`, writer `+5`, feed `+14`) and reader *j* sits at `+30` of block *j*.
+
+On the **kdb-x community licence, two stacks is the practical limit**: a reader holds about
+three sockets per stack and the licence caps a process at 8, so from three stacks up a reader
+refuses client connections with `'conn` while otherwise running normally. `setenv.sh` warns.
+A commercial licence lifts the cap. See §8.3.2.
+
+Both numbers are recorded in `$TORQDATAHOME/.vtstacks` and `.vtidbs`, so they only have to be
+given once. They have to be remembered rather than re-typed: `torq.sh` only knows about the
+processes in the file it picked, so a `stop all` that forgot would leave processes running and
+unmanaged. The markers live with the database, not the install, so two data directories can be
+running different topologies at once.
+
+Each feed takes a **disjoint slice** of the instrument universe — stack *i* of *n* takes every
+instrument whose index is congruent to *i-1* mod *n*. That is required, not cosmetic: the same
+`(date;instrument)` captured by two stacks is served **twice**, with no error and nothing in any
+log. Deriving the slices by arithmetic rather than from hand-written lists makes disjointness a
+property of the configuration rather than of somebody remembering.
+
+Two things still have to be got right with several stacks, and `setenv.sh` emits both:
+
+* **Each writer and feed is pinned to its own tickerplant by name.** A lookup by process *type*
+  takes whichever is found first, so an unpinned writer can bind to another stack's tickerplant,
+  capture its instruments, and stay healthy while doing it.
+* **Each reader carries `.vtidb.multiwriter`.** A reader holds *one* live partition across every
+  root it attaches, so without it the first stack to roll closes a date another stack is still
+  filling, and every directory that stack creates afterwards is invisible. Separate roots do
+  **not** remove this — see §8.3 of the design doc.
 
 The partition column is exposed under the name in `partitioncol` (`appconfig/settings/idb.q`),
 set here to `sym` so queries read the same as against a conventional database.
@@ -252,27 +280,23 @@ compress.sh                the weekend compression job; --dry-run and --test
 database.q                 the schema the tickerplant loads
 
 appconfig/
-  process.csv              the process list - one capture stack
-  process-2stack.csv       the process list for VTSTACKS=2 - two capture stacks over one
-                           root, every port derived from {KDBBASEPORT} (+100 for stack 2)
+  process.csv              the process list - one capture stack, one reader. Anything else
+                           is generated into $TORQDATAHOME/process-generated.csv by setenv.sh
   sort.csv                 declares the partition column (sym)
   compressionconfig.csv    the age tier: how old a partition must be before compression
 
   passwords/               accesslist.txt and feed.txt - one entry per proctype this pack
                            runs, plus admin for qcon
   settings/default.q       settings shared by every process
-  settings/wdb.q           WDB config, including symdomain (see §8.3.1 for multi-stack)
+  settings/wdb.q           WDB config, including savedir and symdomain (§8.3)
   settings/idb.q           IDB config
   settings/compression.q   the size gate (.cmp.minfilesize)
-  settings/feed.q          demo feed config
-  settings/feed2.q         the second stack's instrument universe - loaded only for feed2,
-                           which exists only in process-2stack.csv
+  settings/feed.q          demo feed config, including the universe slice each stack takes
   settings/segmentedtickerplant.q
 
 code/
   wdb/vtwrite.q            the writer overrides this design needs (see §4 of the doc)
-  wdb/vtwritemulti.q       scoped pre-replay delete, for a root shared by two writers (§8.3.2)
-  wdb/vttickerplant.q      binds a writer to ONE named tickerplant (§8.3.2)
+  wdb/vttickerplant.q      binds a writer to ONE named tickerplant (§8.3)
   processes/vtidb.q        the IDB reader (see §5 of the doc)
   processes/vtcompress.q   the compression job and its --dry-run report (see §7 of the doc)
   tick/feed.q              demo feed, FSP trade/quote generator

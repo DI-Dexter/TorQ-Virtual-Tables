@@ -106,6 +106,15 @@ startup:{[]
 / wrapper above covers the replay path, this covers a writer that never subscribes. Idempotent.
 applyvtwrite:{[]
   .lg.o[`vtwrite;"installing virtual-table capture overrides (4.1, 4.2, 4.5, 4.6)"];
+  / This pack keeps ONE directory per writer - the writer writes where the readers read, and
+  / nothing moves at end of day - so hdbdir is always savedir. They are set together in
+  / settings, but .proc.override[] can move one without the other, and hdbdir is what .Q.en
+  / writes the enumeration file to: overriding only savedir puts every stack's domain in the
+  / DEFAULT directory, leaving each root without a sym file and every reader handing back raw
+  / enumeration indices instead of symbols, with nothing logged anywhere. Measured.
+  if[not hdbdir~savedir;
+    .lg.o[`vtwrite;"hdbdir follows savedir: ",(string hdbdir)," -> ",string savedir];
+    hdbdir::savedir];
   upserttopartition::vtupserttopartition;
   savetables::savetablesbypart[;;;;writedownmode];   / rebind: it closed over the old upsert
   savetodisk::vtsavetodisk;

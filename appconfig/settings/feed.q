@@ -1,18 +1,24 @@
 // Bespoke Feed config : Finance Starter Pack
 
-// The instrument universe. A second capture stack (8.3.2) sets its own here - disjoint from
-// this one, because the same (date;instrument) under two roots is served twice with no error.
-// Starting prices follow the symbols automatically unless px is set to a matching-length list.
+// Every variable below has to be DECLARED here even though the process file is what sets
+// it: .proc.override[] runs before process code loads, and only overrides names that
+// already exist. A flag passed for a name that was never declared is silently ignored.
 //
-// \d .
-// syms:`BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN
+// The instrument universe itself lives in code/tick/feed.q; set `universe` below (inside
+// \d .feed) to change it. Starting prices follow the symbols automatically unless px is set to a matching-length
+// list.
 
-// 8.3.2 - pin this feed to ONE tickerplant, by name. ` publishes to whichever tickerplant is
-// found first, which is right with one stack and a coin toss with two. Set it from the process
-// file's extras column (-.feed.tickerplantname stp2); it has to be DECLARED here for that to
-// work, because .proc.override[] only overrides variables that already exist.
 \d .feed
+
+// 8.3 - pin this feed to ONE tickerplant, by name. ` publishes to whichever tickerplant is
+// found first, which is right with one stack and a coin toss with several.
 tickerplantname:`
+
+// 8.3 - which slice of the universe this feed publishes. Stack i of n takes every instrument
+// whose index is congruent to i-1 mod n, so the slices are disjoint by construction. Left at
+// 1 of 1 the feed publishes the whole universe, which is the single-stack case.
+stackid:1
+nstacks:1
 
 \d .servers	
 enabled:1b						

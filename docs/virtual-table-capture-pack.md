@@ -1633,14 +1633,17 @@ Verified: the link survives repeated writes — `.Q.en` appends to the file rath
 it — both roots stay on one inode, and `hcount` follows the link, so the reader's
 `symchanged` check still notices when the *other* stack extends the domain.
 
-**Separate domains** — one file per stack, named apart. Set `symdomain` per stack:
+**Separate domains** — one file per stack, named apart. This is what the pack does, and it
+is automatic: `setenv.sh` gives stack *i* `` `sym<i> `` whenever `VTSTACKS>1` (§8.3.2), passed
+to the writer as `-.wdb.symdomain`.
 
-```q
-/ appconfig/settings/wdb.q, stack A          / stack B
-symdomain:`syma                              symdomain:`symb
+```
+wdb1   -.wdb.savedir :<data>/db1 -.wdb.hdbdir :<data>/db1 -.wdb.symdomain sym1
+wdb2   -.wdb.savedir :<data>/db2 -.wdb.hdbdir :<data>/db2 -.wdb.symdomain sym2
 ```
 
-Nothing else changes; nothing needs to be linked.
+Nothing else changes; nothing needs to be linked. A single stack stays on the stock `` `sym ``,
+so a one-stack tree is exactly what §3 describes.
 
 | | separate domains | shared domain |
 |---|---|---|
@@ -1665,280 +1668,166 @@ table shows one key, and a query returns the rows of *both* directories. Two sta
 the same instrument therefore double-count, silently. Keep the instrument universes of two
 stacks disjoint, or expect to deduplicate downstream. Asserted in `testfiles/vt-inflight-test.q`.
 
-### 8.3.2 Two writers sharing one root
+The pack does this by construction rather than by configuration: each feed takes a slice of the
+universe chosen by position, so no two stacks can be given the same instrument (§8.3.2).
 
-§8.3 adds a second stack with its **own** `savedir`, which is the arrangement to prefer. Two
-writers pointed at the *same* root is a different proposition: it works in steady state, and
-breaks in three places that stock TorQ is entitled to get wrong, because with one writer all
-three assumptions hold.
+### 8.3.2 Running several stacks: `VTSTACKS` and `VTIDBS`
 
-All three fixes are off by default. A single-writer stack runs exactly the code it ran before.
+A capture stack is a tickerplant, a feed and a writer. `VTSTACKS=n` starts *n* of them, each
+writing into its **own** database root. `VTIDBS=m` starts *m* readers, each attaching every
+root, so any one of them answers for the whole estate.
 
-| | flag | file |
-|---|---|---|
-| scoped pre-replay delete | `.wdb.multiwriter` | `code/wdb/vtwritemulti.q` |
-| live-partition guard | `.vtidb.multiwriter` | `code/processes/vtidb.q` |
-| tickerplant binding | `.wdb.tickerplantname` | `code/wdb/vttickerplant.q` |
-
-#### The pre-replay delete removes the other writer's day
-
-On startup TorQ's `clearwdbdata` deletes `.Q.par[savedir;partition;`]` — the whole date
-directory — before replaying its own tickerplant log, then restores only its own rows. With two
-writers over one root, restarting one destroys the other's data for that date. Measured:
-
-```
-before      stack1  869   stack2   902
-after wdb2  stack1  290   stack2  1363    <- 579 stack-1 rows gone
-after wdb1  stack1 2162   stack2   263    <- mutual
+```sh
+VTSTACKS=2 ./deploy/bin/torq.sh start all               # two stacks, one reader
+VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all      # three stacks, two readers
 ```
 
-Every process in both stacks stayed up, and only the restarting writer logged anything at all
-(`deletewdbdata|removing wdb data ... prior to log replay`). Nothing reports the loss.
+**Why a root per writer, and not one shared tree.** Two reasons, one of which is about
+capacity and one about correctness. Several writers on one root compete for the same IO, which
+defeats the point of having several capture points at all. And TorQ's `clearwdbdata` deletes
+`.Q.par[savedir;partition;`]` — the *whole* date directory — before replaying its own
+tickerplant log. With one writer that is correct and idempotent, because the writer owns
+everything under that directory. With two it is mutual destruction: measured at 579 rows lost
+on a single restart, with every process in both stacks staying up and logging nothing. A root
+per writer removes both problems by construction rather than by guard, which is why this pack
+does not support a shared root.
 
-With `.wdb.multiwriter` on, each writer records the instrument directories it creates in a
-manifest at `<savedir>/.vtowner/<procname>_<partition>`, and the delete removes only those,
-under every table in the partition. The manifest name contains a dot, so the reader ignores it:
-`datedirs` keeps only date-shaped names and `symfiles` drops anything matching `*.*`.
+#### What gets generated
 
-`clearwdbdata` is defined and called inside `wdb.q`, so there is nothing to wrap. It deletes
-through `.os.deldir`, and `code/wdb/` loads 12 ms before `wdb.q`, which is the window. Only the
-exact partition-root delete is intercepted; housekeeping and `fixpartition`'s rename pass
-straight through.
+Anything other than one stack and one reader is generated by `setenv.sh` into
+`$TORQDATAHOME/process-generated.csv`, and `TORQPROCESSES` is pointed at it. The shipped
+`appconfig/process.csv` is used unchanged for the 1×1 case, so the default deployment does not
+depend on the generator at all.
 
-If a writer has **no** manifest for the partition but another writer's manifest exists at the
-root, it deletes nothing and logs a refusal. A duplicate replay of its own rows is recoverable;
-another stack's deleted day is not.
+Ports follow from `KDBBASEPORT`. Stack *i* occupies the block at `+100*(i-1)` — tickerplant at
+`+0`, writer at `+5`, feed at `+14` — and reader *j* sits at `+30` of block *j*. Discovery is at
+`+1` and the compression process at `+40`, both in block 1.
 
-#### One stack's rollover closes a date the other is still writing
+For `VTSTACKS=2`, the writers and readers come out as:
 
-`mutable` is `d>=current`, so a date below `current` is cached and never rescanned. Stock
-`livepart` takes the newest date on disk, so the **first** writer to create tomorrow's directory
-advances `current` for every reader — while the other writer is still filling today. Every
-directory it creates there afterwards is invisible for good, with nothing logged. Recovering it
-needs `.vtidb.dropcache[]` and a sweep.
+```
+wdb1   -.wdb.tickerplantname stp1 -.wdb.savedir :<data>/db1 -.wdb.hdbdir :<data>/db1 -.wdb.symdomain sym1
+feed1  -.feed.tickerplantname stp1 -.feed.stackid 1 -.feed.nstacks 2
+wdb2   -.wdb.tickerplantname stp2 -.wdb.savedir :<data>/db2 -.wdb.hdbdir :<data>/db2 -.wdb.symdomain sym2
+feed2  -.feed.tickerplantname stp2 -.feed.stackid 2 -.feed.nstacks 2
+idb1   -s 4 -.vtidb.multiwriter 1 -.vtidb.roots :<data>/db1 :<data>/db2
+```
 
-This does **not** require the stacks to be configured differently. Each stack has its own
-tickerplant firing its own timer, so they never roll at the same instant:
+Every one of those names is **declared** in `appconfig/settings/`, and has to be:
+`.proc.override[]` runs before process code loads and only overrides variables that already
+exist, so a flag passed for a name that was never declared is silently ignored.
 
-| | measured |
+**`savedir` and `hdbdir` always travel together.** They are set on one line in
+`settings/wdb.q`, but an override can move one without the other — and `hdbdir` is what
+`.Q.en` writes the enumeration file to. Overriding only `savedir` puts *every* stack's domain
+file in the default directory, leaves each root without one, and makes every reader hand back
+raw enumeration indices instead of symbols:
+
+```
+db/sym1  db/sym2        <- both domains in the directory nothing is writing to
+db1/  db2/              <- no sym file at either root
+
+select rows:count i by side from trade
+(`s#+(,`side)!,`s#13 14 14 15)!+(,`rows)!,248 273 352 358     <- indices, not symbols
+```
+
+Nothing errors and nothing logs. The generator emits both together, and
+`code/wdb/vtwrite.q` forces `hdbdir` to follow `savedir` on top of that, because this pack
+keeps one directory per writer by design.
+
+#### Disjoint universes, by arithmetic
+
+Stack *i* of *n* publishes every instrument whose index in the universe is congruent to *i-1*
+mod *n* (`code/tick/feed.q`, `vtslice`). The slices are disjoint because of how they are
+computed, not because two lists were kept apart by hand — which matters, since the same
+`(date;instrument)` captured by two stacks is served **twice**, with no error anywhere (§8.3.1).
+
+| stacks | slice sizes, from a 20-instrument universe |
 |---|---|
-| skew between two tickerplants, same roll offset | ~104 ms |
-| skew between the two writers | < 1 ms |
-| a writer stalled across the boundary | seconds to minutes |
+| 1 | 20 |
+| 2 | 10, 10 |
+| 3 | 7, 7, 6 |
 
-With `.vtidb.multiwriter` on, the reader asks every writer which partition it is filling and
-holds `current` at the earliest answer, in both `livepart` and `rollover`. Holding it lower is
-always safe: `mutable` is a `>=` test, so a lower `current` rescans more dates, never fewer.
+#### The tickerplant pin
 
-Verified against a real timer-driven roll with one writer stopped across the boundary
-(`kill -STOP`, resumed 90 s later):
+A writer finds its tickerplant with `.sub.getsubscriptionhandles`, which filters on process
+*type* and takes the first row. With one tickerplant that is unambiguous; with several it
+depends on ordering, and an unpinned writer can bind to another stack's tickerplant, capture
+its instruments, and stay healthy while doing it. `code/wdb/vttickerplant.q` wraps that lookup
+to accept a procname filter the stock caller never passes. The same applies to the feed
+(`code/tick/feed.q`, `tphandle`).
 
-```
-12:06:51.014  stock reader     rollover to 2026.09.18    <- closed the date 88s early
-12:08:19.283  guarded reader   every writer has rolled - advancing to 2026.09.18
-```
+Separate process files would narrow this, but not close it: discovery can still add processes
+to a writer's view that its own file never mentioned. Pinning by name is what makes the
+relationship explicit, and it supersedes whatever discovery contributes.
 
-The writer handles are opened by the reader with `.vtidb.writertimeout`, not reused from
-`.servers`, whose handles carry no timeout. A writer that is up but not answering — paused,
-swapping, replaying a long log — would otherwise block the synchronous call and with it every
-rebuild: measured at **5 m 12 s** against a stopped writer, during which ordinary queries still
-served in 12 ms. A writer that times out is dropped and simply does not constrain the live
-partition.
+#### How many stacks you can actually run
 
-#### A writer binds to whichever tickerplant it hears about first
-
-`wdb.q` subscribes with
-
-```q
-s:.sub.getsubscriptionhandles[tickerplanttypes;();()!()];
-subproc:first s
-```
-
-— a filter on process **type**, none on process **name**, and then the first row of whatever
-comes back. With one stack that is not a choice. With two visible to each other it is decided by
-the order `.servers.SERVERS` happens to be in.
-
-A writer on the wrong tickerplant is completely silent. It subscribes, it captures, it writes;
-every process stays up and nothing is logged. It is simply writing the *other* stack's
-instruments — so both writers claim the same directories, the reader serves every row twice, and
-the scoped delete above now has two claimants for one set of instruments, which puts the
-pre-replay delete back into play. Measured with the pin removed from an otherwise correct
-two-stack start:
+A reader holds roughly **three sockets per capture stack** — two outbound to each writer (one
+from `.servers`, one for the live-partition poll in `livepartitions`) and one inbound as that
+writer registers — plus one to discovery. Measured on a three-stack tree, `idb1` held 9:
 
 ```
-wdb1 owns  AAPL AIG AMD DELL DOW GOOG HPQ IBM INTC MSFT
-wdb2 owns  AAPL AIG AMD DELL DOW GOOG HPQ IBM INTC MSFT   <- both on stp1
-stack 2's instruments captured                        0
-restarting wdb2                             472 -> 435    <- and it deletes stack 1's rows
+-> wdb1 x2   -> wdb2 x2   -> wdb3 x2   -> discovery   <- 2 writers registering
 ```
 
-`.sub.getsubscriptionhandles` already takes a procname filter; `wdb.q` simply never passes one.
-`code/wdb/vttickerplant.q` wraps it so that a lookup which asks for a tickerplant type and leaves
-the name open gets `.wdb.tickerplantname` injected. It has to be wrapped at **load** time, not
-from `.proc.initlist`: `wdb.q` calls `startup[]` at the bottom of its own file, long before the
-init list runs. `.sub` is common code, so it is already there when `$KDBAPPCODE/wdb/` loads.
+The kdb-x community licence caps a process at **8** concurrent connections
+(`.Q.lim[][`conns]`). From three stacks upwards a reader therefore has nothing left for
+clients: it stays up, keeps capturing, keeps rebuilding — and refuses every `hopen` with
+`'conn`, which reads like the process being down when it is anything but.
 
-The name is declared in `appconfig/settings/wdb.q` and set per writer from the process file's
-`extras` column:
-
-```
--.wdb.tickerplantname stp2
-```
-
-It must be **declared** in a settings file for that to work. `.proc.override[]` runs before
-process code is loaded and only overrides variables that already exist, so a name declared only
-in `code/wdb/vttickerplant.q` would be skipped without a word. The value arrives as a symbol:
-`overrideconfig` casts the command-line string to the type of the existing value.
-
-The demo feed has the same choice to make and takes it the same way, from
-`.feed.tickerplantname`.
-
-#### Starting both stacks: `VTSTACKS=2`
-
-With the binding pinned, both stacks can live in **one** process file and start together:
-
-```sh
-VTSTACKS=2 ./deploy/bin/torq.sh start all
-```
-
-`setenv.sh` reads `VTSTACKS` and selects `appconfig/process-2stack.csv` over
-`appconfig/process.csv`. That file is the single-stack topology plus a second tickerplant,
-writer, feed and reader at `{KDBBASEPORT}+100`, with the three flags set per process in the
-`extras` column.
-
-The choice is then recorded in `$TORQDATAHOME/.vtstacks` and read back when `VTSTACKS` is unset,
-so later calls need nothing:
-
-```sh
-VTSTACKS=2 ./deploy/bin/torq.sh start all
-./deploy/bin/torq.sh summary
-./deploy/bin/torq.sh stop all
-```
-
-It has to be remembered rather than re-typed, because `torq.sh` only knows about the processes in
-the file it is given: a `stop all` that forgot the flag reads `process.csv`, stops the first
-stack, and leaves the second running with nothing managing it. An explicit `VTSTACKS` always
-wins and is written back in turn, and the marker sits with the database rather than the install,
-so two data directories can run different topologies at once. Writing it is best effort — a
-read-only data directory means the flag still works, it just has to be passed each time.
-
-One process file rather than two also means one `-stackid`, so `torq.sh stop all` reaches both
-stacks and `summary` lists all nine processes.
-
-Two details make it safe to share the rest of the environment:
-
-- the two tickerplants can share `KDBTPLOG`, because the segmented tickerplant names its log
-  directory `<procname>_<date>`;
-- the two writers share one root and therefore one `sym` file, which is the shared-domain mode
-  of §8.3.1 with nothing to symlink — the enumeration primitive locks.
-
-What is *not* shared is the instrument universe: `appconfig/settings/feed2.q` gives the second
-feed a disjoint one. That file is loaded only for procname `feed2`, which exists only in
-`process-2stack.csv`, so it is inert in the shipped single-stack topology.
-
-#### Deployment rules
-
-1. **Pin every writer to its tickerplant by name** — `.wdb.tickerplantname`, and
-   `.feed.tickerplantname` on the feed. This is the only rule that holds however the stacks
-   learn about each other: it filters at subscription time, so it does not matter whether the
-   tickerplant came from the process file or from a shared discovery service.
-2. **Or keep the stacks from seeing each other at all**, which is what the pin replaces: give
-   each stack its own process file listing only its own tickerplant, pass it with `-procfile`,
-   and set `.servers.CONNECTIONSFROMDISCOVERY:0b` on the second stack so it cannot learn the
-   first stack's tickerplant from a shared discovery. Both halves are needed — the process file
-   alone is not sufficient. (On kdb-x `DISCOVERYCONNECT` is `0b` when `.Q.lim` caps connections,
-   but `CONNECTIONSFROMDISCOVERY` is not.) This is the arrangement to reach for when the two stacks
-   run on **different machines**, since `torq.sh start all` launches processes on the box it runs
-   on and no single file can start both halves. On one machine `VTSTACKS=2` and
-   `appconfig/process-2stack.csv` do the same job with the pin instead, and are simpler.
-3. **Keep the instrument universes disjoint**, per §8.3.1, and give each stack its own
-   enumeration domain unless they are deliberately coordinated on one.
-4. **Every writer sharing the root must enable the scoped delete.** One stock writer still
-   deletes the whole partition; the manifest cannot defend against a process that does not read
-   it.
-
-`testfiles/vt-multiwriter-test.q` covers the two behaviours in isolation, including that each is
-inert when its flag is off. `testfiles/vt-twostack-test.sh` runs two real stacks over one root
-from hand-built config, and `testfiles/vt-vtstacks-test.sh` runs the same topology from the
-pack's own config through `VTSTACKS=2` — the second of those asserts the manifests are disjoint,
-which is what catches a writer on the wrong tickerplant.
-
-### 8.3.3 Two stacks on separate roots — the worked setup
-
-§8.3.2 is what to do when two writers *must* share a tree. This is the arrangement to prefer,
-and it needs a different subset of the same three flags. The difference is not obvious, so it is
-worth stating plainly: **separating the roots removes the delete problem and leaves the rollover
-problem exactly where it was.**
-
-| | shared root (§8.3.2) | separate roots |
+| stacks | sockets per reader | left for clients, on the community licence |
 |---|---|---|
-| `.wdb.multiwriter` — scoped delete | **required** | not needed |
-| `.wdb.tickerplantname` — the pin | **required** | **required** |
-| `.vtidb.multiwriter` — live-partition guard | **required** | **required**, if one reader serves both roots |
-| `symdomain` — §8.3.1 | leave at `` `sym `` | **required**, one name per root |
+| 1 | 4 | 4 |
+| 2 | 7 | 1 |
+| 3 | 10 | **none — refuses connections** |
 
-The delete stops mattering because each writer is alone at its root, so stock `clearwdbdata` is
-correct again and cheaper. Leaving the flag on is harmless — with no other writer's manifest at
-the root, `vtnomanifest` falls through to the stock full delete — but there is nothing to gain.
+**Two stacks is the practical limit on the community licence.** A commercial licence lifts the
+cap and the topology scales as far as the hardware does. `setenv.sh` warns when `VTSTACKS>=3`.
+Adding readers with `VTIDBS` does not help — each new reader opens its own set — but it does
+spread *client* connections across more processes, which is what it is for.
 
-The rollover guard still matters because the reader holds **one** `current` across every root it
-serves (`alldates` rakes `datedirs` over `.vtidb.roots`). When the first stack rolls, the reader
-advances, and the other stack's still-open date becomes immutable **in its own tree**.
+The remembered shape lives in `$TORQDATAHOME/.vtstacks` and `.vtidbs`. It has to be
+remembered rather than re-typed, because `torq.sh` derives *everything* — start and stop alike
+— from the process file it picked, so a `stop all` that forgot would leave processes running
+and unmanaged.
 
-#### Configuration
+---
 
-TorQ loads settings in the order `default → parentproctype → proctype → procname`, so per-stack
-values go in a file named after the process. No code changes and no extra `-load`.
+### 8.3.3 What separate roots do not fix
 
-**Why these files are needed here and not in §8.3.2.** `wdb1` and `wdb2` share the `wdb`
-proctype, so `settings/wdb.q` hands them identical values; a file named after the *process* is
-the only place two processes of the same type can differ. With a shared root nothing has to
-differ — one `savedir`, one enumeration domain, one root for the readers — which is why
-`VTSTACKS=2` works on a fresh install with no configuration at all. Separate roots is the first
-topology where that stops being true, and the four files below are the whole of it.
+Separating the roots removes the delete problem entirely. It leaves the rollover problem
+exactly where it was, and that surprises people, so it is worth stating plainly.
 
-The pack already ships one file of this kind: `appconfig/settings/feed2.q`, giving the second
-feed its disjoint universe. That is the one thing which varies per process even with one root.
+| | separate roots |
+|---|---|
+| pre-replay delete destroying another stack's day | **gone** — each writer is alone at its root |
+| `.wdb.tickerplantname` — the pin | **still required** |
+| `.feed.tickerplantname` — the pin | **still required** |
+| `.vtidb.multiwriter` — live-partition guard | **still required**, whenever a reader serves more than one writer |
+| `symdomain` — §8.3.1 | **still required**, one name per root |
 
-```q
-/ appconfig/settings/wdb1.q                  / appconfig/settings/wdb2.q
-\d .wdb                                      \d .wdb
-savedir:hdbdir:hsym`$"/path/db1"             savedir:hdbdir:hsym`$"/path/db2"
-symdomain:`syma                              symdomain:`symb
-\d .                                         \d .
-```
+The guard still matters because a reader holds **one** `current` across every root it serves —
+`alldates` rakes `datedirs` over the whole of `.vtidb.roots`. When the first stack rolls, the
+reader advances, and the other stack's still-open date becomes immutable **in its own tree**.
 
-```q
-/ appconfig/settings/idb1.q and idb2.q — one reader, both roots
-\d .vtidb
-roots:(hsym`$"/path/db1";hsym`$"/path/db2")
-\d .
-```
-
-In the process file, keep the tickerplant pin and the reader guard and drop the scoped delete:
-
-```
-wdb1 ... -.wdb.tickerplantname stp1
-feed1... -.feed.tickerplantname stp1
-idb1 ... -s 4 -.vtidb.multiwriter 1
-wdb2 ... -.wdb.tickerplantname stp2
-feed2... -.feed.tickerplantname stp2
-idb2 ... -s 4 -.vtidb.multiwriter 1
-```
-
-`VTSTACKS=2 ./deploy/bin/torq.sh start all` then starts both, exactly as for a shared root.
+The check has to sit on both paths that assign `current`, not just the announcement. `rollover`
+takes the announced date; `rebuild` recomputes from disk on every sweep. Guarding only
+`rollover` leaves the 30-second sweep free to drag the boundary forward again, which converts a
+reproducible failure into one that appears intermittently and passes most tests.
+`testfiles/vt-livepart-test.q` asserts both paths.
 
 #### Verified
 
-Two stacks, roots `db1` and `db2`, domains `` `syma `` and `` `symb ``, one reader on both:
+Two stacks, roots `db1` and `db2`, domains `` `sym1 `` and `` `sym2 ``, one reader on both:
 
 ```
 one reader, both roots        817 rows - 378 from db1, 439 from db2, 20 instruments
 idb1 = idb2                   1b
-both domains loaded           syma 16, symb 16, no `sym` global
+both domains loaded           sym1 16, sym2 16, no `sym` global
 ```
 
-A writer restart touches only its own tree, with no scoped delete and nothing to coordinate:
+A writer restart touches only its own tree, with nothing to coordinate:
 
 ```
                    before   after
@@ -1964,7 +1853,7 @@ ones — which is why the symptom is a missing instrument rather than a missing 
 
 #### The cost, from §8.3.1
 
-Separate roots mean separate enumeration domains, and `` `syma$`Buy `` and `` `symb$`Buy `` are
+Separate roots mean separate enumeration domains, and `` `sym1$`buy `` and `` `sym2$`buy `` are
 distinct values. A cross-root grouping on a symbol column held inside the files returns one group
 per domain:
 
@@ -2554,7 +2443,7 @@ what makes them worth listing together rather than only in the sections that exp
 | A writer restart deletes and rebuilds the live partition | Anything not in the current tp log is not restored | Stock TorQ recovery; know it before restarting a writer |
 | **A partition whose `.d` names columns that are not on disk** | **Every whole-database query fails, not just that partition** | Not guarded, by decision (§5.7): transient case heals within one sweep, permanent case is a full disk where failing loudly is correct. Pinned down by `vt-diskfull-test.q` |
 | **A disk-full retry re-writes partitions that already succeeded** | Duplicate rows, silently, in the partitions written *before* the failure | Demonstrated (`vt-diskfull-test.q`, §8.5). No dedupe exists — check those partitions after any ENOSPC |
-| **The same `(date;instrument)` under two roots** | Rows served twice, no error, one key | Demonstrated (`vt-inflight-test.q`, §8.3.1). Keep stack instrument universes disjoint |
+| **The same `(date;instrument)` under two roots** | Rows served twice, no error, one key | Demonstrated (`vt-inflight-test.q`, §8.3.1). The generated feeds take disjoint slices by construction, so this only arises from hand-written config |
 | Partitions created during tp log replay are not announced | Up to 30s of staleness after a writer restart; `vtfill` skipped for them | Known, not fixed (VT-21.7) |
-| **A stock writer sharing a root with multi-writer writers** | On its restart it deletes the WHOLE date directory, destroying every other writer's data for that date | Not defendable from the manifest — a process that does not read it cannot be stopped. Every writer on a shared root must set `.wdb.multiwriter` (§8.3.2) |
-| **Two writers that can see each other's tickerplant** | A writer subscribes to the WRONG stack's tickerplant and captures its instruments; both writers then claim the same directories, the reader serves every row twice, and a restart puts the pre-replay delete back in play | Pin each writer with `.wdb.tickerplantname` and each feed with `.feed.tickerplantname` (§8.3.2); or keep the stacks apart with their own `-procfile` and `.servers.CONNECTIONSFROMDISCOVERY:0b`. Measured; nothing logs it. `vt-vtstacks-test.sh` asserts the ownership manifests are disjoint |
+| **Two writers pointed at one root** | On either restart, the WHOLE date directory is deleted and only that writer's rows replayed — destroying the other's day for that date, silently | Not supported and not guarded. Each writer gets its own root (§8.3.2); `setenv.sh` generates them, so this only arises from hand-written config |
+| **Two writers that can see each other's tickerplant** | A writer subscribes to the WRONG stack's tickerplant and captures its instruments; both writers then claim the same directories, the reader serves every row twice, and a restart puts the pre-replay delete back in play | Pin each writer with `.wdb.tickerplantname` and each feed with `.feed.tickerplantname` (§8.3.2), which `setenv.sh` emits for every stack; or keep the stacks apart with their own `-procfile` and `.servers.CONNECTIONSFROMDISCOVERY:0b`. Measured; nothing logs it. `vt-vtstacks-test.sh` asserts each writer bound to its own tickerplant and that the captured universes are disjoint |

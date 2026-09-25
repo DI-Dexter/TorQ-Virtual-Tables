@@ -12,10 +12,26 @@
 
 REPLAYINTERVAL:@[value;`REPLAYINTERVAL;0D00:00:00.200];
 
-/ 8.3.2 - the instrument universe is config, so a second capture stack needs a settings file
-/ rather than a copy of this file. Two stacks sharing a root MUST have disjoint universes: the
-/ same (date;instrument) under two roots is served twice, with no error (8.3.1).
-syms:@[value;`syms;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT];
+/ 8.3 - the instrument universe. With several capture stacks each feed takes a DISJOINT
+/ slice of it, chosen by position rather than by a hand-written list per stack: stack i of n
+/ takes every instrument whose index is congruent to i-1 mod n. Disjointness is then a
+/ property of the arithmetic rather than of somebody remembering to keep two lists apart -
+/ which matters, because the same (date;instrument) captured by two stacks is served twice
+/ with no error anywhere (8.3.1).
+/ .
+/ Both are declared in appconfig/settings/feed.q so the process file's extras column can set
+/ them (-.feed.stackid 2 -.feed.nstacks 3); setenv.sh emits those whenever VTSTACKS>1.
+/ read from .feed so appconfig/settings/feed.q, which sits inside \d .feed, can set it
+universe:@[value;`.feed.universe;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT,
+                                 `BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN];
+vtslice:{[u;id;n]
+  if[n<=1; :u];
+  if[not count r:u where (id-1)=(til count u) mod n;
+    .lg.e[`feed;"stack ",string[id]," of ",string[n]," has no instruments - the universe ",
+                "holds only ",string[count u]]];
+  r
+  };
+syms:@[value;`syms;vtslice[universe;@[value;`.feed.stackid;1];@[value;`.feed.nstacks;1]]];
 / starting price per instrument. The stock ten are hand-picked; a configured universe of a
 / different length gets spread-out deterministic prices instead, so only the symbols need setting.
 px:@[value;`px;33 27 84 12 20 72 36 51 42 29f];

@@ -2,14 +2,10 @@
 // see docs/virtual-table-capture-pack.md §3.3
 
 \d .wdb
-savedir:hdbdir:hsym`$getenv`KDBWDB       // one directory; sym file lives at its root
-multiwriter:@[value;`multiwriter;0b]                           // 8.3.2 - set when another writer shares this root.
-                                         // TorQ's pre-replay clearwdbdata deletes the WHOLE
-                                         // date directory, which silently destroys the other
-                                         // writer's data for that date; with this on, the
-                                         // delete is scoped to the instruments this writer has
-                                         // an ownership manifest for. Off for a single stack,
-                                         // where the stock delete is correct and cheaper
+savedir:hdbdir:hsym`$getenv`KDBWDB       // one directory; sym file lives at its root.
+                                         // With several capture stacks setenv.sh overrides BOTH
+                                         // from the process file - each writer owns its own root
+                                         // (8.3). code/wdb/vtwrite.q keeps them equal regardless
 writedownmode:`partbyattr                // date + instrument directories.
                                          // NB necessary but NOT sufficient - on its own it
                                          // also writes the partition column into the files,
@@ -41,7 +37,7 @@ startpartition:{[]
 
 getpartition:{[] @[value;`.wdb.currentpartition;{[e] .wdb.startpartition[]}]};
 
-tickerplantname:`                        // 8.3.2 - pin this writer to ONE tickerplant, by name.
+tickerplantname:`                        // 8.3 - pin this writer to ONE tickerplant, by name.
                                          // ` takes whichever tickerplant is found first, which is
                                          // right with one stack and a coin toss with two: a writer
                                          // that binds to the other stack's tickerplant captures the
@@ -54,8 +50,9 @@ tickerplantname:`                        // 8.3.2 - pin this writer to ONE ticke
 
 symdomain:`sym                           // this stack's enumeration domain file. One reader
                                          // serving several stacks needs a distinct name per
-                                         // stack (`syma, `symb...) - two roots both calling
-                                         // it `sym cannot be read together (8.3.1)
+                                         // stack (`sym1, `sym2...) - two roots both calling
+                                         // it `sym cannot be read together (8.3.1). setenv.sh
+                                         // sets it from the process file when VTSTACKS>1
 
 \d .servers
 CONNECTIONS:`segmentedtickerplant`idb`discovery
