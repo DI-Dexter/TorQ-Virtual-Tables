@@ -4,9 +4,8 @@
 #
 #   ./testfiles/vt-vtstacks-test.sh
 #
-# vt-livepart-test.q proves the reader's guard in isolation; this proves the WIRING, which
-# is where every fault in this feature has actually been - a guard that looks installed and
-# does nothing. It asserts, with real processes:
+# vt-livepart-test.q proves the reader's guard in isolation; this proves the wiring. It
+# asserts, with real processes:
 #
 #   the generator emits the right processes, ports and flags for several shapes
 #   each writer owns its OWN root, with its OWN enumeration domain

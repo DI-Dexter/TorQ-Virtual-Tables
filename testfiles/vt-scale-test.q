@@ -72,7 +72,7 @@ measure:{[r;dates;insts]
 
   / NOTE maps/fds as a delta, RSS as an absolute: this script reuses one process across
   / sizes, so a per-size RSS delta understates. For bytes-per-directory, run a fresh
-  / process per size - measured that way it is a consistent 891 B/dir.
+  / process per size.
   -1 "  ",(-9$string np),(-8$string maps[]-m0),(-6$string fds[]-f0),
      (-10$string rss[]),(-9$string cold),(-9$string live),(-9$string roll),-9$string sel;
   };

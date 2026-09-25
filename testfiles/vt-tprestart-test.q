@@ -2,12 +2,9 @@
 / .
 /     cd ~/TorQ-VT-Capture-Pack && . ./setenv.sh && q testfiles/vt-tprestart-test.q
 / .
-/ A liveness check, and the reason it exists is worth reading before you need it.
-/ .
 / Restart the tickerplant and the stack does not fully recover on its own. Every process stays
-/ up, the writer keeps logging "enumerated trade table" once a second, the reader answers
-/ queries - and nothing new is captured, indefinitely. Measured: still stalled ten minutes
-/ later, well past the five-minute .servers RETRY.
+/ up, the writer keeps logging once a second, the reader answers queries - and nothing new is
+/ captured, past the five-minute .servers RETRY.
 / .
 / Two separate causes, one fixed and one not:
 / .
@@ -19,7 +16,7 @@
 /   condition and then never calls it - the predicate exists, nothing invokes it. NOT FIXED:
 /   re-subscribing also re-runs the partition delete-and-replay, so wiring it to a timer needs
 /   more care than it looks. The operational answer is to restart the writer, which replays
-/   the tickerplant log and loses nothing - verified, 435 rows to 2005 on restart
+/   the tickerplant log and loses nothing
 / .
 / So: after a tickerplant restart, restart the writer. This test tells you whether you need to.
 / .

@@ -19,14 +19,10 @@ sorttypes:sortworkertypes:()
 idbtypes:`idb
 permitreload:0b                          // nothing to reload
 sortcsv:hsym`$getenv[`KDBAPPCONFIG],"/sort.csv"
-// Seed the partition from the BUSINESS date, not the calendar date.
-//
-// TorQ seeds .wdb.currentpartition from .proc.cd[], and clearwdbdata[] deletes THAT
-// partition before replaying the tickerplant log. Under a roll offset the two disagree, so
-// the delete misses, fixpartition corrects the date afterwards, and the replay writes the
-// day on top of data that was never removed. Measured: 442 duplicate rows after one restart.
-// .eodtime.getday is what the tickerplant dates its own logs with, so seeding from it makes
-// the two agree at any offset, including none.
+// Seed the partition from the business date, not the calendar date. TorQ seeds
+// .wdb.currentpartition from .proc.cd[] and clearwdbdata[] deletes that partition before
+// replaying the log, so under a roll offset the two disagree and the replay lands on top of
+// data the delete missed. .eodtime.getday is what the tickerplant dates its own logs with.
 //
 // NOTE .eodtime is not loaded when this file runs, so the lookup sits inside the function
 // body rather than at the top level.
@@ -39,14 +35,10 @@ getpartition:{[] @[value;`.wdb.currentpartition;{[e] .wdb.startpartition[]}]};
 
 tickerplantname:`                        // 8.3 - pin this writer to ONE tickerplant, by name.
                                          // ` takes whichever tickerplant is found first, which is
-                                         // right with one stack and a coin toss with two: a writer
-                                         // that binds to the other stack's tickerplant captures the
-                                         // other stack's instruments and still looks healthy.
-                                         // Set it from the process file's extras column
-                                         // (-.wdb.tickerplantname stp2). It has to be DECLARED
-                                         // here for that to work - .proc.override[] runs before
-                                         // process code loads and only overrides variables that
-                                         // already exist. see code/wdb/vttickerplant.q
+                                         // a coin toss with several stacks. Set from the process
+                                         // file; it must be declared here for that to work, as
+                                         // .proc.override[] only overrides names that already
+                                         // exist. see code/wdb/vttickerplant.q
 
 symdomain:`sym                           // this stack's enumeration domain file. One reader
                                          // serving several stacks needs a distinct name per

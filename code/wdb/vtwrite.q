@@ -48,15 +48,13 @@ vtfill:{[pt;expt]
     }[pt;expt] each tablelist[];
   };
 
-/ 4.1 - notify readers about NEW partitions only. Appends need none: readers hold live views
-/ (5.2) and see them already. ORDER MATTERS - fill every table's directory before notifying,
-/ or a reader can rebuild against a half-created partition and fail (4.6).
+/ 4.1 - notify readers about NEW partitions only; appends need none, as readers hold live
+/ views (5.2). Order matters: fill every table's directory before notifying, or a reader can
+/ rebuild against a half-created partition and fail (4.6).
 / .
-/ NOTE `pending` covers a tickerplant log REPLAY, which never reaches this function:
-/ replaymaxrowcheck calls savetables directly, so vtupserttopartition runs and fills vtnew,
-/ but vtfill and the notification do not. Clearing vtnew unconditionally threw that list away
-/ on the first flush after a replay, leaving an instrument without its empty directory in any
-/ table that had no rows - 4.6's silently-absent-date.
+/ NOTE `pending` covers a tickerplant log replay, which never reaches this function -
+/ replaymaxrowcheck calls savetables directly. Clearing vtnew unconditionally would discard
+/ that list on the first flush after a replay.
 vtsavetodisk:{[]
   pending:vtnew;                                     / anything a replay's direct calls left
   vtnew::();                                         / edge-triggered: only this flush counts
@@ -75,27 +73,20 @@ vteodsort:{[dir;pt;tablist;writedownmode;mergelimits;hdbsettings;mergemethod]
   notifyidbs[`.vtidb.rollover;enlist pt+1];
   };
 
-/ 8.3.1 - name this stack's enumeration domain. A reader binds a global named after the FILE,
-/ so two stacks both calling it `sym cannot be served by one reader: one load wins and the
-/ other's symbols resolve wrongly, silently.
-/ .
-/ .Q.en[d;t] is .Q.ens[d;t;`sym], so redirecting .Q.en covers every enumeration site at once
-/ rather than copying a forty-line TorQ function to change one symbol in it.
+/ 8.3.1 - name this stack's enumeration domain. A reader binds a global named after the file,
+/ so two stacks both calling it `sym cannot be served by one reader.
+/ .Q.en[d;t] is .Q.ens[d;t;`sym], so redirecting .Q.en covers every enumeration site at once.
 applysymdomain:{[]
   if[symdomain~`sym; :()];
   .lg.o[`vtwrite;"enumerating against `",string[symdomain]," instead of `sym (8.3.1)"];
   .Q.en:{[dom;d;t] .Q.ens[d;t;dom]}[symdomain];
   };
 
-/ 4.7 - the overrides must be installed BEFORE the tickerplant log is replayed, and
-/ .proc.addinitlist alone is not enough. startup[] subscribes and replays, and wdb.q calls it
-/ at the bottom of the file - well before the init list runs. So on a restart with a populated
-/ log the replay is written by the STOCK writer, which keeps the partition column in the files
-/ (4.5) and leaves old and new partitions mismatched (9.3).
-/ .
-/ Only the normal recovery path shows it, so a test that wipes var/ first never will;
-/ testfiles/vt-replay-test.q covers it. startup is defined before this file and only CALLED by
-/ wdb.q, so wrapping it survives where redefining anything wdb.q owns would not.
+/ 4.7 - the overrides must be installed before the tickerplant log is replayed, and
+/ .proc.addinitlist alone is not enough: wdb.q calls startup[] at the bottom of its own file,
+/ before the init list runs, so the replay would be written by the stock writer and keep the
+/ partition column in the files (4.5). startup is defined before this file and only called by
+/ wdb.q, so wrapping it works where redefining anything wdb.q owns would not.
 origstartup:startup;
 startup:{[]
   applyvtwrite[];

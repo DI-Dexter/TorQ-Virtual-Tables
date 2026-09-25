@@ -14,8 +14,7 @@
 / CALENDAR date. With a roll offset the tickerplant is on a different date - under this pack's
 / 17:00 roll they disagree from midnight until the roll - so the delete misses, the real
 / partition survives untouched, and the replay writes the whole day on top of it. Every row
-/ already on disk is duplicated. Measured on the live stack: 442 duplicate rows from one
-/ restart, all inside the replayed window.
+/ already on disk is duplicated.
 / .
 / fixpartition does correct currentpartition afterwards, from the tp log date. It is too late:
 / clearwdbdata has already run, and its corrective branch only fires when the WRONG directory

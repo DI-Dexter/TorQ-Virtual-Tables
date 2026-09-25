@@ -6,10 +6,10 @@
 / what keeps the catalogue cheap as history grows. With ONE writer that is safe, because that
 / writer is the only process that can still add a directory to the live date.
 / .
-/ With several writers it is not, and SEPARATE ROOTS DO NOT FIX IT: a reader attaches every
-/ root and holds ONE live partition across the lot, so the first stack to create tomorrow
-/ makes today immutable for every stack - and every directory the slower writer adds to today
-/ afterwards is never seen. Not lost on disk; invisible to queries, with nothing logged.
+/ With several writers it is not, and separate roots do not fix it: a reader attaches every
+/ root and holds one live partition across the lot, so the first stack to create tomorrow
+/ makes today immutable for every stack, and directories the slower writer adds afterwards are
+/ never seen.
 / .
 / The guard asks every writer which partition it is filling and holds at the earliest answer.
 / It has to sit on BOTH paths that assign current - the rollover announcement and the periodic
@@ -70,10 +70,9 @@ origrebuild:.vtidb.rebuild; .vtidb.rebuild:{[] rebuilt+::1; 0};
 check[2026.01.01=.vtidb.current; "rollover: current is NOT advanced while a writer is behind"];
 check[rebuilt>0; "rollover: it rescans instead of closing the date"];
 
-/ ---- the REBUILD path, which is the one that is easy to miss ----
-/ rollover refused above. If the guard were only on that path, the next sweep would recompute
-/ current from disk, find 2026.01.02 there, and advance anyway - undoing the refusal within
-/ one sweep interval and turning a hard failure into an intermittent one.
+/ ---- the rebuild path ----
+/ rollover refused above. A guard on that path alone would leave the next sweep free to
+/ recompute current from disk and advance anyway.
 .vtidb.current:2026.01.01;
 .vtidb.wconn:(`$())!();
 check[2026.01.01=.vtidb.livepart ds;

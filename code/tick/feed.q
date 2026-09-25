@@ -1,8 +1,7 @@
 / Market-data feed, following the Finance Starter Pack generator.
 / .
-/ Publishes trades and quotes for a small equity universe, with deliberately skewed volumes
-/ so some symbols are far busier than others - which is what makes the date+instrument
-/ layout worth looking at, since partition sizes then vary the way they do in real data.
+/ Publishes trades and quotes for a small equity universe, with skewed volumes so partition
+/ sizes vary the way they do in real data.
 / .
 / Configured by environment:
 /   REPLAYINTERVAL   time between publishes (default 200ms)
@@ -12,16 +11,14 @@
 
 REPLAYINTERVAL:@[value;`REPLAYINTERVAL;0D00:00:00.200];
 
-/ 8.3 - the instrument universe. With several capture stacks each feed takes a DISJOINT
-/ slice of it, chosen by position rather than by a hand-written list per stack: stack i of n
-/ takes every instrument whose index is congruent to i-1 mod n. Disjointness is then a
-/ property of the arithmetic rather than of somebody remembering to keep two lists apart -
-/ which matters, because the same (date;instrument) captured by two stacks is served twice
-/ with no error anywhere (8.3.1).
+/ 8.3 - the instrument universe. With several capture stacks, stack i of n takes every
+/ instrument whose index is congruent to i-1 mod n, so the slices are disjoint by arithmetic
+/ rather than by two lists being kept apart. The same (date;instrument) captured by two stacks
+/ would be served twice with no error (8.3.1).
 / .
-/ Both are declared in appconfig/settings/feed.q so the process file's extras column can set
-/ them (-.feed.stackid 2 -.feed.nstacks 3); setenv.sh emits those whenever VTSTACKS>1.
-/ read from .feed so appconfig/settings/feed.q, which sits inside \d .feed, can set it
+/ stackid and nstacks are declared in appconfig/settings/feed.q so the process file can set
+/ them; setenv.sh emits them whenever VTSTACKS>1. universe is read from .feed for the same
+/ reason - that settings file sits inside \d .feed.
 universe:@[value;`.feed.universe;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT,
                                  `BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN];
 vtslice:{[u;id;n]
@@ -104,13 +101,10 @@ mkquote:{[n]
 / file's extras column can override it (-.feed.tickerplantname stp2).
 tpname:@[value;`.feed.tickerplantname;`];
 
-/ Resolve the handle on EVERY publish rather than caching one at startup. A cached handle dies
-/ with the tickerplant, and .servers reconnecting updates its own table, not a copy taken at
-/ load time - so a feed written the other way writes to a dead descriptor while every process
-/ stays up and looks healthy. See testfiles/vt-tprestart-test.q
-/ .
-/ Both branches return an EMPTY int list when nothing is available rather than a null handle:
-/ send below tests count, and `first` on an empty table column would hand it 0Ni, which counts 1.
+/ Resolve the handle on every publish rather than caching one at startup: a cached handle dies
+/ with the tickerplant, and .servers reconnecting updates its own table, not a copy of it.
+/ Both branches return an empty int list rather than a null handle, because send tests count
+/ and `first` on an empty column would give 0Ni, which counts 1.
 tphandle:{[]
   if[null tpname; :.servers.gethandlebytype[`segmentedtickerplant;`any]];
   r:.servers.getservers[`procname;tpname;()!();1b;1b];

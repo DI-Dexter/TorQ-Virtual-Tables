@@ -47,12 +47,10 @@ opened:(`$())!();                        / table -> opened live views, one per p
 lastgap:(`$())!();                       / table -> dates missing at the last check (4.6)
 wconn:(`$())!();                         / hpup -> handle, opened with a timeout (8.3.2)
 
-/ The enumeration domain. Symbol columns are enumerations against a file at the root, so the
-/ domain must cover a directory's values BEFORE it is opened or they resolve wrongly.
-/ .
-/ Every file at a root (rather than a date directory) is a domain: a stack written with
-/ .Q.ens[dir;t;`symb] leaves `symb, not `sym. Discovering them rather than assuming `sym is
-/ what lets two stacks keep separate domains without colliding (§8.3.1).
+/ The enumeration domain must cover a directory's values before it is opened, or its symbol
+/ columns resolve wrongly. Any file at a root - as opposed to a date directory - is a domain,
+/ so they are discovered rather than assumed to be `sym; that is what lets stacks keep
+/ separate domains (8.3.1).
 symfiles:{[]
   raze {[r]
     k:key r;
@@ -84,13 +82,9 @@ loadsym:{[]
 symbytes:{[] sum 0,@[hcount;;0] each symfiles[] };
 symchanged:{[] $[symsize<>c:symbytes[];[symsize::c;1b];0b] };
 
-/ 5.4 - the domain can grow with NO directory appearing. A new value in a data symbol column
-/ lands in an existing partition, so the writer sends nothing (4.1 is edge-triggered on
-/ directories) and the reader's domain is short by one entry. The rows are visible immediately,
-/ but that column reads as NULL until the domain is reloaded - silently.
-/ .
-/ Hence its own timer rather than the rebuild sweep: one hcount per root is cheap enough to run
-/ every second, where a rebuild is ~10 ms and has no reason to.
+/ 5.4 - the domain can grow with no directory appearing, so the writer sends no notification
+/ and the new value reads as null until the domain is reloaded. Hence its own timer rather than
+/ the rebuild sweep: one hcount per root is cheap enough to run every second.
 refreshsym:{[]
   if[symchanged[];
     loadsym[];
@@ -114,14 +108,11 @@ scantabs:{[ds]
   distinct raze {[ds;r] raze {[r;d] k:key .Q.dd[r;d]; $[()~k; 0#`; k]}[r] each ds}[ds] each roots
   };
 
-/ Which tables to build. Discovering them from the tree means a table added to database.q needs
-/ no change here - but scanning EVERY date on every rebuild is a readdir per date, growing with
-/ retention forever to notice something that happens once in a deployment's life (2.6 ms of a
-/ 4.2 ms rebuild at 250 dates).
-/ .
-/ A new table can only appear where the writer is writing, so once anything is known only the
-/ live partition needs looking at. The cold path still scans everything, because a table that
-/ has STOPPED receiving data exists only in history.
+/ Which tables to build, discovered from the tree so a table added to database.q needs no
+/ change here. Scanning every date costs a readdir per date and grows with retention, so once
+/ anything is known only the live partition is looked at - a new table can only appear where
+/ the writer is writing. The cold path still scans everything, because a table that has stopped
+/ receiving data exists only in history.
 tablelist:{[ds]
   if[not tabs~`; :(),tabs];
   known:key parts;
@@ -147,46 +138,33 @@ scanone:{[t;d] raze scandate[t;;d] each roots };
 / (e.g. `2026.08.17), not dates - scandate needs the symbol to build the path
 alldates:{[] d:raze datedirs each roots; $[count d; asc distinct d; 0#`] };
 
-/ open one partition, tolerating a directory that is mid-creation.
-/ .
-/ NOTE this does NOT catch a directory whose .d names columns absent from disk. get is lazy, so
-/ it attaches and counts, then breaks every query touching the missing column - for the whole
-/ table. Deliberately unguarded (5.7): the transient race is rare and self-healing, and in the
-/ permanent case a loud failure beats a reader quietly omitting an instrument.
-/ testfiles/vt-diskfull-test.q pins down what happens.
+/ open one partition, tolerating a directory that is mid-creation. This does not catch a
+/ directory whose .d names columns absent from disk: get is lazy, so it attaches and then
+/ breaks every query touching that column. Unguarded by decision - see 5.7.
 open:{[p] @[get;p;{[p;e] .lg.w[`vtidb;"cannot open ",string[p],": ",e]; ::}[p]]};
 
 / can this date still gain a directory? Only the live partition can, so a rolled date's
-/ catalogue and views are reused rather than rescanned - which keeps rebuild off the critical
-/ path. A null current (no writer found yet) forces a full scan.
+/ catalogue is reused rather than rescanned. A null current forces a full scan.
 / NOTE vectorised deliberately: "mutable each" on an empty list yields an untyped () which
 / breaks the boolean `and` in build.
 mutable:{[d] $[null current; count[d]#1b; d>=current] };
 
-/ which partition is the writer filling? Getting this wrong is not cosmetic: an immutable date
-/ is cached and never rescanned, so believing the live date has rolled freezes it. Every
-/ instrument starting afterwards is on disk and absent from every query, with nothing logged -
-/ the reader simply stopped looking.
+/ Which partition is the writer filling? An immutable date is never rescanned, so believing the
+/ live date has rolled freezes it, and every instrument starting afterwards is on disk and
+/ absent from every query.
 / .
-/ .z.D is the wrong answer in the ORDINARY case: with a non-zero .eodtime.rolltimeoffset the
-/ writer fills yesterday for offset hours after .z.D advances, and a reader coming up in that
-/ window with no writer to ask would freeze the live partition for the rest of the day.
+/ .z.D is wrong under a non-zero .eodtime.rolltimeoffset, where the writer fills yesterday for
+/ offset hours after .z.D advances. The newest date on disk is a lower bound the writer cannot
+/ contradict, so take the writer's answer but never sit behind the disk. max ignores nulls,
+/ which is what makes this work before a writer is found.
 / .
-/ The newest date on disk is a lower bound the writer cannot contradict - it cannot be filling
-/ a date older than a directory it created. So take the writer's answer, but never sit behind
-/ the disk. NOTE max ignores nulls, which is what makes this work before a writer is found.
-/ 8.3.2 - the partition every known writer is currently filling.
+/ 8.3 - the handles below are our own, opened with a timeout, rather than the shared .servers
+/ ones, which carry none: a writer that is alive but not answering would otherwise block every
+/ rebuild. One that times out does not constrain the live partition, which is the safe
+/ direction - a lower answer rescans more dates, never fewer.
 / .
-/ The handles are OUR own, opened with a timeout, not the shared .servers ones. That is
-/ deliberate: TorQ's handles carry no timeout, so a writer that is alive but not answering -
-/ paused, swapping, replaying a long log - blocks the sync call indefinitely, and with it every
-/ rebuild. Measured: a SIGSTOPped writer blocked rebuild for its whole 5m outage while ordinary
-/ queries still served in 12ms. A writer that times out simply does not constrain the live
-/ partition, which is the safe direction: a lower answer rescans more dates, never fewer.
-/ NOTE `.vtidb.wdbtypes` is written out in full deliberately. Inside a select/exec an
-/ unqualified name resolves in the ROOT namespace, not the one the function was defined in, so
-/ bare `wdbtypes` throws here - and the trap would turn that into "no writers", which reads as
-/ a healthy single-writer stack rather than a fault.
+/ NOTE .vtidb.wdbtypes is qualified deliberately: inside a select or exec an unqualified name
+/ resolves in the root namespace, not the one the function was defined in.
 writerhpups:{[]
   @[{[] exec hpup from .servers.SERVERS where proctype in .vtidb.wdbtypes, not null hpup};
     (::);{[e] .lg.w[`vtidb;"could not read .servers.SERVERS: ",e]; 0#`}]
@@ -253,9 +231,8 @@ dropdates:{[ds]
     }[ds] each key parts;
   };
 
-/ Build one virtual table. Immutable dates already held are reused as-is; only the live date
-/ and dates not yet seen are scanned. Rescanning all history on every tick is what made rebuild
-/ linear in days as well as instruments (§8.2).
+/ Build one virtual table. Immutable dates already held are reused; only the live date and
+/ dates not yet seen are scanned.
 / NOTE the global must land in the ROOT namespace so clients can write "select from trade" -
 / `t set ...` inside a \d block defines .vtidb.t instead.
 build:{[t;ds]
@@ -286,11 +263,9 @@ build:{[t;ds]
   count m
   };
 
-/ §4.6 - a table whose directory is missing for some date is served as absent, with no error.
-/ Nothing else surfaces it, so compare coverage across tables and log the difference. The
-/ writer creates a directory for every table in every partition, so in a healthy database
-/ every table covers exactly the same dates; a strict subset means one was created without
-/ its tables.
+/ 4.6 - a table whose directory is missing for some date is served as absent, with no error.
+/ The writer creates a directory for every table in every partition, so in a healthy database
+/ every table covers the same dates. Compare them and log any difference.
 coverage:{[] {asc distinct exec date from x} each parts };
 
 / WARNING do not name the local "cov" - it is a q keyword (covariance) and shadowing it
@@ -327,21 +302,16 @@ rebuild:{[]
   after
   };
 
-/ Called by the wdb at end of day (§4.2). No data moves; a new date is just new directories.
+/ Called by the wdb at end of day (4.2). No data moves; a new date is just new directories.
 / .
-/ The only catalogue that can still be wrong is the date that just closed - the writer's final
-/ flush may have created directories not yet scanned. So forget that one and keep every older
-/ date. Dropping the WHOLE cache, as this used to, made end of day a full rescan of history
-/ (~47 us per directory); its justification, that compression needs a genuine re-open, was
-/ measured false in §7.1.
-/ .
+/ Only the date that just closed can still be wrong - the writer's final flush may have created
+/ directories not yet scanned - so forget that one and keep every older date.
 / NOTE the drop must happen BEFORE current moves, or the closed date reads as immutable and
 / build reuses its stale catalogue.
 rollover:{[pt]
-  / 8.3.2 - one writer announcing the new day does not mean every writer has rolled. Advancing
-  / here would make the closed date immutable while another stack is still filling it, and any
-  / directory it creates afterwards would be invisible for good. Rescan instead, and let a
-  / later rollover (or the sweep, through livepart) advance once the others have caught up.
+  / 8.3 - one writer announcing the new day does not mean every writer has rolled. Advancing
+  / here would freeze a date another stack is still filling. Rescan instead, and let a later
+  / rollover, or the sweep through livepart, advance once the others have caught up.
   if[multiwriter;
     ps:livepartitions[];
     if[count ps;

@@ -34,7 +34,7 @@ SETENV="$PWD/setenv.sh" "$TORQHOME/torq.sh" start discovery1 stp1 wdb1 idb1
 sleep 8
 
 # count only THIS pack's processes - the procnames are TorQ defaults, so an unscoped
-# pgrep counts every stack on the machine (it reported 8/4 with two stacks up)
+# pgrep counts every stack on the machine, so match on this tree's own paths
 up=$(pgrep -f 'procname (discovery1|stp1|wdb1|idb1)' 2>/dev/null | while read -r pid; do
   ps -p "$pid" -o args= 2>/dev/null | grep -qF -- "$TORQAPPHOME" && echo x
 done | wc -l)
