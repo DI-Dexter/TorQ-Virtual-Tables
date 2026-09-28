@@ -13,7 +13,7 @@
 / partitions created during the current flush, as (partition;instrument) pairs
 vtnew:();
 
-/ this stack's enumeration domain (8.3.1). settings override it; default keeps stock behaviour
+/ this stack's enumeration domain; the default keeps stock behaviour. §8.3.1
 symdomain:@[value;`symdomain;`sym];
 
 / TorQ's directory-name sanitiser, factored out of upserttopartition so the fill logic
@@ -22,10 +22,10 @@ symdomain:@[value;`symdomain;`sym];
 vtdirname:{[expt] `$"_"^.Q.an .Q.an?"_" sv string `TORQNULLSYMBOL^ensuresymlist[expt]};
 
 / the schema a partition directory should have: the table minus its partition column(s),
-/ because those are carried by the directory name (4.5)
+/ because those are carried by the directory name. §4.5
 vtschema:{[t;expttype] ![0#value t;();0b;expttype]};
 
-/ 4.5 - write the data WITHOUT the partition column: a column inside the files can never be
+/ write the data without the partition column - a column inside the files can never be
 / used to skip directories, so leaving sym in would make every query on it scan everything.
 / Also records directories that did not exist beforehand, for 4.6.
 vtupserttopartition:{[dir;tablename;tabdata;pt;expttype;expt;writedownmode]
@@ -37,7 +37,7 @@ vtupserttopartition:{[dir;tablename;tabdata;pt;expttype;expt;writedownmode]
   .merge.partsizes[base]+:(count r;-22!r);
   };
 
-/ 4.6 - every table needs a directory in every partition. One holding trade but not quote
+/ every table needs a directory in every partition. One holding trade but not quote
 / breaks a reader's load, and if it sorts first it silently truncates the table list.
 vtfill:{[pt;expt]
   {[pt;expt;t]
@@ -48,13 +48,10 @@ vtfill:{[pt;expt]
     }[pt;expt] each tablelist[];
   };
 
-/ 4.1 - notify readers about NEW partitions only; appends need none, as readers hold live
-/ views (5.2). Order matters: fill every table's directory before notifying, or a reader can
-/ rebuild against a half-created partition and fail (4.6).
-/ .
+/ notify readers about NEW partitions only; appends need none. Fill every table's directory
+/ before notifying, or a reader can rebuild against a half-created partition. §4.1, §4.6
 / NOTE `pending` covers a tickerplant log replay, which never reaches this function -
-/ replaymaxrowcheck calls savetables directly. Clearing vtnew unconditionally would discard
-/ that list on the first flush after a replay.
+/ replaymaxrowcheck calls savetables directly, so vtnew must not be cleared unconditionally.
 vtsavetodisk:{[]
   pending:vtnew;                                     / anything a replay's direct calls left
   vtnew::();                                         / edge-triggered: only this flush counts
@@ -66,26 +63,24 @@ vtsavetodisk:{[]
     notifyidbs[`.vtidb.rebuild;enlist()]];
   };
 
-/ 4.2 - end of day only announces the new date. Stock endofdaysort would merge the instrument
+/ end of day only announces the new date. Stock endofdaysort would merge the instrument
 / directories back into one table per date, which is the layout this design exists to avoid.
 vteodsort:{[dir;pt;tablist;writedownmode;mergelimits;hdbsettings;mergemethod]
   .lg.o[`vtwrite;"no-merge eod - partition ",string[pt]," stays in place"];
   notifyidbs[`.vtidb.rollover;enlist pt+1];
   };
 
-/ 8.3.1 - enumerate against this stack's own domain file. A reader binds a global named after
-/ the file, so two stacks both calling it `sym cannot be served by one reader.
+/ enumerate against this stack's own domain file - a reader binds a global named after the
+/ file, so two stacks both calling it `sym cannot be served by one reader. §8.3.1
 applysymdomain:{[]
   if[symdomain~`sym; :()];
-  .lg.o[`vtwrite;"enumerating against `",string[symdomain]," instead of `sym (8.3.1)"];
+  .lg.o[`vtwrite;"enumerating against `",string[symdomain]," instead of `sym"];
   .Q.en:{[dom;d;t] .Q.ens[d;t;dom]}[symdomain];
   };
 
-/ 4.7 - the overrides must be installed before the tickerplant log is replayed, and
-/ .proc.addinitlist alone is not enough: wdb.q calls startup[] at the bottom of its own file,
-/ before the init list runs, so the replay would be written by the stock writer and keep the
-/ partition column in the files (4.5). startup is defined before this file and only called by
-/ wdb.q, so wrapping it works where redefining anything wdb.q owns would not.
+/ the overrides must be installed before the tickerplant log is replayed, and addinitlist is
+/ too late: wdb.q calls startup[] at the bottom of its own file. Wrapping startup works where
+/ redefining anything wdb.q owns would not. §4.7
 origstartup:startup;
 startup:{[]
   applyvtwrite[];
@@ -96,8 +91,8 @@ startup:{[]
 / wrapper above covers the replay path, this covers a writer that never subscribes. Idempotent.
 applyvtwrite:{[]
   .lg.o[`vtwrite;"installing virtual-table capture overrides (4.1, 4.2, 4.5, 4.6)"];
-  / One directory per writer, so hdbdir is always savedir. A command-line override can move
-  / one without the other, and hdbdir is where .Q.en writes the domain file.
+  / one directory per writer, so hdbdir is always savedir. An override can move one without
+  / the other, and hdbdir is where .Q.en writes the domain file.
   if[not hdbdir~savedir;
     .lg.o[`vtwrite;"hdbdir follows savedir: ",(string hdbdir)," -> ",string savedir];
     hdbdir::savedir];

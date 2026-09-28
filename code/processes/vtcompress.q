@@ -25,10 +25,8 @@ if[count e:getenv`VTCMP_CONFIG; inputcsv:e];
 minfilesize:@[value;`minfilesize;4096];
 if[count e:getenv`VTCMP_MINFILESIZE; minfilesize:"J"$e];
 
-// Stock hdbstructure classifies a path by depth and knows only partition/table/column and
-// table/column. A partbyattr column file sits one deeper, so it matches neither and showcomp
-// drops every row. Adding the extra depth folds the instrument level away, leaving per-column
-// rules working unchanged.
+// Stock hdbstructure classifies a path by depth and does not know about the instrument level,
+// so showcomp drops every row. The extra depth folds that level away. §4.4
 //
 // Must be applied here, not in appconfig/settings/compression.q: settings load before
 // code/common/compress.q, so an override there is overwritten by the stock definition.

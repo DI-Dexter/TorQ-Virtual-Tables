@@ -11,14 +11,12 @@
 
 REPLAYINTERVAL:@[value;`REPLAYINTERVAL;0D00:00:00.200];
 
-/ 8.3 - the instrument universe. With several capture stacks, stack i of n takes every
-/ instrument whose index is congruent to i-1 mod n, so the slices are disjoint by arithmetic
-/ rather than by two lists being kept apart. The same (date;instrument) captured by two stacks
-/ would be served twice with no error (8.3.1).
+/ the instrument universe. Stack i of n takes every instrument whose index is congruent to
+/ i-1 mod n, so the slices are disjoint by arithmetic rather than by two lists being kept
+/ apart. §8.3
 / .
-/ stackid and nstacks are declared in appconfig/settings/feed.q so the process file can set
-/ them; setenv.sh emits them whenever VTSTACKS>1. universe is read from .feed for the same
-/ reason - that settings file sits inside \d .feed.
+/ stackid, nstacks and universe are declared in appconfig/settings/feed.q - which sits inside
+/ \d .feed - so the process file can set them.
 universe:@[value;`.feed.universe;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT,
                                  `BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN];
 vtslice:{[u;id;n]

@@ -3,21 +3,20 @@
 
 \d .vtidb
 roots:enlist hsym`$getenv`KDBDB          // database roots to scan. A list, so one reader can
-                                         // serve several capture stacks (§8.3)
+                                         // serve several capture stacks. §8.3
 tabs:`                                   // ` = discover the table list from disk. Set
                                          // explicitly to restrict, e.g. `trade
 historydays:0W                           // how many days back to attach. 0W = everything
-sweep:0D00:00:30                         // backstop rescan, behind the wdb's notification
-                                         // (§4.1). Deliberately slack
-symsweep:0D00:00:01                      // how often to reload the enumeration domain. A new
-                                         // symbol value creates no directory, so nothing
-                                         // announces it (§5.4). One hcount per root
+sweep:0D00:00:30                         // backstop rescan behind the wdb's notification;
+                                         // deliberately slack. §4.1
+symsweep:0D00:00:01                      // how often to reload the enumeration domain; a new
+                                         // symbol value announces nothing. §5.4
 
 partitioncol:`sym                        // name the partition column is exposed under. Not
                                          // stored on disk, so it must match the schema
-multiwriter:@[value;`multiwriter;0b]     // 8.3 - hold the live partition at the earliest date
-                                         // any writer still has open. One round trip per
-                                         // writer per rebuild, so off for a single writer
+multiwriter:@[value;`multiwriter;0b]     // hold the live partition at the earliest date any
+                                         // writer still has open. One round trip per writer
+                                         // per rebuild, so off for a single writer. §8.3
 writertimeout:@[value;`writertimeout;1000]   // ms to wait for a writer's answer
 
 wdbtypes:`wdb

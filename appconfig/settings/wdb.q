@@ -3,11 +3,11 @@
 
 \d .wdb
 savedir:hdbdir:hsym`$getenv`KDBWDB       // one directory; sym file lives at its root. With
-                                         // several stacks setenv.sh overrides both (8.3)
+                                         // several stacks setenv.sh overrides both. §8.3
 writedownmode:`partbyattr                // date + instrument directories. Not sufficient on
                                          // its own - it also writes the partition column into
                                          // the files. see code/wdb/vtwrite.q
-mode:`saveandsort                        // the sort phase is overridden to a no-op (4.2)
+mode:`saveandsort                        // the sort phase is overridden to a no-op. §4.2
 immediate:1b                             // flush on every timer tick, ignore maxrows
 settimer:0D00:00:01                      // ...every second
 gc:0b                                    // at 1s cadence do not gc on every flush
@@ -33,9 +33,7 @@ tickerplantname:`                        // 8.3 - pin this writer to one tickerp
                                          // has something to override
 
 symdomain:`sym                           // this stack's enumeration domain file. One name per
-                                         // root - two roots both calling it `sym cannot be
-                                         // read together (8.3.1). Set by setenv.sh when
-                                         // VTSTACKS>1
+                                         // root; set by setenv.sh when VTSTACKS>1. §8.3.1
 
 \d .servers
 CONNECTIONS:`segmentedtickerplant`idb`discovery

@@ -10,13 +10,11 @@
 
 \d .feed
 
-// 8.3 - pin this feed to ONE tickerplant, by name. ` publishes to whichever tickerplant is
-// found first, which is right with one stack and a coin toss with several.
+// pin this feed to one tickerplant by name; ` publishes to whichever is found first. §8.3
 tickerplantname:`
 
-// 8.3 - which slice of the universe this feed publishes. Stack i of n takes every instrument
-// whose index is congruent to i-1 mod n, so the slices are disjoint by construction. Left at
-// 1 of 1 the feed publishes the whole universe, which is the single-stack case.
+// which slice of the universe this feed publishes - stack i of n, disjoint by construction.
+// 1 of 1 publishes the whole universe. §8.3
 stackid:1
 nstacks:1
 

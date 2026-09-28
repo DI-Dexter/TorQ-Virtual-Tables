@@ -160,14 +160,25 @@ r=$(q "$S/r.q" -q -port $((BASE+30)) 2>/dev/null)
                                        || bad "the reader attached $(echo "$r" | cut -d'|' -f1) roots"
 [ "$(echo "$r" | cut -d'|' -f2)" -gt 0 ] 2>/dev/null && ok "the reader is serving rows from both roots" \
                                                      || bad "the reader returned no rows"
-# compare against what is actually on disk, not a fixed 20: an instrument gets a directory
-# when it first trades, so a short run may not have reached every one of them yet. What must
-# hold is that the reader sees ALL of them, from both roots, and no more.
-ondisk=$(cat <(ls "$S/run/db1/$(ls $S/run/db1 | grep '^[0-9]' | tail -1)/trade") \
-             <(ls "$S/run/db2/$(ls $S/run/db2 | grep '^[0-9]' | tail -1)/trade") | sort -u | wc -l)
-[ "$(echo "$r" | cut -d'|' -f3)" = "$ondisk" ] \
+# Compare against what is actually on disk, not a fixed 20: an instrument gets a directory
+# when it first trades, so a short run may not have reached every one of them yet.
+#
+# And give it a settle window. A directory exists on disk BEFORE the reader has been told
+# about it, so a single comparison races the notification and the backstop sweep. Poll until
+# the two agree, or give up after 40s and report the gap.
+ondisk_now () {
+  cat <(ls "$S/run/db1/$(ls $S/run/db1 | grep '^[0-9]' | tail -1)/trade" 2>/dev/null) \
+      <(ls "$S/run/db2/$(ls $S/run/db2 | grep '^[0-9]' | tail -1)/trade" 2>/dev/null) | sort -u | wc -l
+}
+seen_now () { q "$S/r.q" -q -port $((BASE+30)) 2>/dev/null | cut -d'|' -f3; }
+for _ in $(seq 20); do
+  ondisk=$(ondisk_now); seen=$(seen_now)
+  [ "$seen" = "$ondisk" ] && break
+  sleep 2
+done
+[ "$seen" = "$ondisk" ] \
   && ok "the reader sees every instrument on both roots ($ondisk of 20 traded so far)" \
-  || bad "the reader sees $(echo "$r" | cut -d'|' -f3) instruments, $ondisk are on disk"
+  || bad "the reader sees $seen instruments, $ondisk are on disk"
 
 echo ""
 echo "  $PASS passed, $FAIL failed"

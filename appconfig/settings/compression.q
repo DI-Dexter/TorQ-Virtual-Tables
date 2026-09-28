@@ -10,7 +10,7 @@ maxage:365                               // oldest partition to consider. The lo
 
 minfilesize:4096                         // skip column files this size or smaller: a file
                                          // already inside one filesystem block frees nothing
-                                         // and only adds work to every read (doc §7.3).
+                                         // and only adds work to every read. §7.3
                                          // 0 compresses everything, as stock TorQ does
 
 // The hdbstructure override lives in code/processes/vtcompress.q, not here: settings files
