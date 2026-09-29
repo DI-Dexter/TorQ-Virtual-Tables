@@ -142,8 +142,10 @@ rq:s,"/reader.q";
   "probe:{[] (count select from trade; count .vtidb.parts`trade;";
   "  count distinct exec instrument from select instrument from trade)};";
   "aligned:{[] all {count[.vtidb.parts x]=count .vtidb.opened x} each key .vtidb.parts};";
-  "/ the timer both rebuilds and enforces a deadline, so a stuck client cannot orphan this";
-  ".z.ts:{[] .vtidb.rebuild[]; rebuilds::rebuilds+1; if[0D00:01<.z.p-started; exit 0]};";
+  "/ the timer both rebuilds and enforces a deadline, so a stuck client cannot orphan this.";
+  "/ five minutes, not one: the deadline is a safety valve, and a one-minute budget expires";
+  "/ mid-run on a loaded box, which reads as every query failing at once";
+  ".z.ts:{[] .vtidb.rebuild[]; rebuilds::rebuilds+1; if[0D00:05<.z.p-started; exit 0]};";
   "system \"p \",getenv`PORT;";
   "system \"t \",getenv`TICK;");
 system"ROOT=",(1_string root)," PORT=",string[port]," TICK=3 q ",rq," </dev/null >",s,"/reader.log 2>&1 &";
@@ -179,12 +181,18 @@ disagree:sum {not x[1]=x[2]} each good;
 rows:{x 0} each good;
 partc:{x 1} each good;
 
--1 "    queries                 ",string count obs;
--1 "    rebuilds meanwhile      ",string h"rebuilds";
--1 "    partitions             ",(string min partc)," -> ",string max partc;
--1 "    latency us  median     ",string med lat;
--1 "                max        ",string max lat;
+/ assert BEFORE reporting. if every query errored there is nothing to summarise, and the
+/ summary would fail on the empty result rather than on the assertion that actually broke
 check[0=bad; "no query errored while the table was being replaced underneath it"];
+
+-1 "    queries                 ",string count obs;
+-1 "    rebuilds meanwhile      ",string @[h;"rebuilds";{"unreachable - ",x}];
+if[count good;
+  @[{[partc;lat]
+      -1 "    partitions             ",(string min partc)," -> ",string max partc;
+      -1 "    latency us  median     ",string med lat;
+      -1 "                max        ",string max lat;
+     }[partc];lat;{[e] -1 "    (summary unavailable: ",e,")"}]];
 check[0=disagree;
   "no query ever saw the catalogue and the served table disagree (",string[count good]," answers)"];
 check[rows~asc rows; "row counts seen by the client only go up - no query read a half-built table"];
