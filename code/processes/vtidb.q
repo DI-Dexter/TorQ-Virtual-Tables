@@ -1,13 +1,9 @@
-/ Virtual-table capture pack : IDB reader. Section 5 of docs/virtual-table-capture-pack.md.
-/ .
+/ Virtual-table capture pack : IDB reader. §5 of docs/virtual-table-capture-pack.md.
 / Reads the capture database in place - no load, no copy, no RDB. Each table is a kx.pq.t
 / virtual table over the date/instrument directories the WDB writes, opened as live views.
-/ .
-/ NOTE a line containing only "/" opens a block comment in q, so every comment line here
-/ carries text after the slash.
 
-/ bind mkP at the root and fully qualified: inside a \d block an undotted name is
-/ resolved against that namespace, so this avoids depending on how it resolves
+/ bind mkP at the root, fully qualified - inside \d an undotted name resolves against
+/ that namespace
 .vtidb.mkp:(use`kx.pq.t)`mkP;
 
 \d .vtidb
@@ -20,14 +16,13 @@ tabs:@[value;`tabs;`];
 historydays:@[value;`historydays;0W];
 sweep:@[value;`sweep;0D00:00:30];
 symsweep:@[value;`symsweep;0D00:00:01];
-/ the name the partition column is exposed under - not stored on disk, so it cannot be
-/ derived. Must match the source schema. §2.2
+/ the name the partition column is exposed under; must match the source schema. §2.2
 partitioncol:@[value;`partitioncol;`instrument];
 wdbtypes:@[value;`wdbtypes;`wdb];
 wdbcheckcycles:@[value;`wdbcheckcycles;3];
 wdbconnsleepintv:@[value;`wdbconnsleepintv;5];
-/ ask every writer which partition it is filling rather than trusting the newest date on
-/ disk. Costs a round trip per writer per rebuild, so off for a single writer. §8.3
+/ ask every writer which partition it is filling, instead of trusting the newest date
+/ on disk. §8.3
 multiwriter:@[value;`multiwriter;0b];
 / ms to wait for a writer's answer; one that times out does not constrain the live partition
 writertimeout:@[value;`writertimeout;1000];
@@ -43,8 +38,7 @@ opened:(`$())!();                        / table -> opened live views, one per p
 lastgap:(`$())!();                       / table -> dates missing at the last check. §4.6
 wconn:(`$())!();                         / hpup -> handle, opened with a timeout. §8.3
 
-/ every domain file at a root, discovered rather than assumed to be `sym so that stacks can
-/ keep separate domains. §8.3.1
+/ every domain file at a root, discovered rather than assumed to be `sym. §8.3.1
 symfiles:{[]
   raze {[r]
     k:key r;
@@ -55,8 +49,7 @@ symfiles:{[]
     } each roots
   };
 
-/ `load` binds a global named after the file, so two roots with different names coexist. Two
-/ roots using the same name for different content do not: one load wins. §8.3.1
+/ `load` binds a global named after the file, so two roots need two domain names. §8.3.1
 loadsym:{[]
   f:symfiles[];
   {@[load;x;{[p;e] .lg.e[`vtidb;"failed to load ",string[p],": ",e]}[x]]} each f;
@@ -69,13 +62,11 @@ loadsym:{[]
                    "stack its own domain name, or share one file. see 8.3.1"]];
     }[f;g] each where 1<count each g;
   };
-/ seeded with 0, not (): sum of an empty list is (), and symsize<>() is () too, which fails
-/ the $[] in symchanged with a type error on a database that has no sym file yet
+/ seeded with 0, not (): sum of an empty list is (), which fails the $[] in symchanged
 symbytes:{[] sum 0,@[hcount;;0] each symfiles[] };
 symchanged:{[] $[symsize<>c:symbytes[];[symsize::c;1b];0b] };
 
-/ the domain can grow with no directory appearing, so nothing announces it. Its own timer
-/ rather than the rebuild sweep - one hcount per root. §5.4
+/ the domain can grow with no directory appearing, so it gets its own timer. §5.4
 refreshsym:{[]
   if[symchanged[];
     loadsym[];
@@ -99,9 +90,8 @@ scantabs:{[ds]
   distinct raze {[ds;r] raze {[r;d] k:key .Q.dd[r;d]; $[()~k; 0#`; k]}[r] each ds}[ds] each roots
   };
 
-/ which tables to build, discovered from the tree. Once anything is known only the live
-/ partition is scanned; the cold path scans everything, as a table that has stopped receiving
-/ data exists only in history. §5.3
+/ which tables to build, discovered from the tree. The cold path scans everything; once
+/ anything is known only the live partition is scanned. §5.3
 tablelist:{[ds]
   if[not tabs~`; :(),tabs];
   known:key parts;
@@ -112,8 +102,7 @@ tablelist:{[ds]
 empty:flip (`date,partitioncol,`path)!(0#0Nd;0#`;0#`);
 
 / the (date;<partitioncol>;path) rows for one table on one date under one root.
-/ WARNING the trailing ` is what makes the view live. Without it each partition is a frozen
-/ snapshot and the reader never sees another row. §5.2
+/ WARNING the trailing ` is what makes the view live. §5.2
 scandate:{[t;r;d]
   p:.Q.dd[.Q.dd[r;d];t];
   if[()~i:key p; :empty];
@@ -123,36 +112,25 @@ scandate:{[t;r;d]
 / one table on one date, across every root
 scanone:{[t;d] raze scandate[t;;d] each roots };
 
-/ every partition directory NAME currently on disk, across every root. these are symbols
-/ (e.g. `2026.08.17), not dates - scandate needs the symbol to build the path
+/ every partition directory NAME on disk, as symbols not dates - scandate needs the symbol
 alldates:{[] d:raze datedirs each roots; $[count d; asc distinct d; 0#`] };
 
-/ open one partition, tolerating a directory that is mid-creation. A .d naming columns absent
-/ from disk is NOT caught here, by decision. §5.7
+/ open one partition, tolerating a directory that is mid-creation. §5.7
 open:{[p] @[get;p;{[p;e] .lg.w[`vtidb;"cannot open ",string[p],": ",e]; ::}[p]]};
 
-/ can this date still gain a directory? Only the live one can, so a rolled date's catalogue is
-/ reused. A null current forces a full scan.
-/ NOTE vectorised deliberately: "mutable each" on an empty list yields an untyped () which
-/ breaks the boolean `and` in build.
+/ can this date still gain a directory? A null current forces a full scan.
+/ NOTE vectorised deliberately - "mutable each" on an empty list breaks the `and` in build
 mutable:{[d] $[null current; count[d]#1b; d>=current] };
 
-/ Which partition is the writer filling? Getting it wrong freezes a date that is still being
-/ written to. Not .z.D - that is wrong under a roll offset - and never behind the newest date
-/ on disk, which the writer cannot contradict. §5.5
-/ .
-/ The handles are our own, opened with a timeout, rather than the shared .servers ones, which
-/ carry none: a writer that is alive but not answering would block every rebuild.
-/ .
-/ NOTE .vtidb.wdbtypes is qualified deliberately: inside a select or exec an unqualified name
-/ resolves in the root namespace, not the one the function was defined in.
+/ which partition the writer is filling - not .z.D, which is wrong under a roll offset. §5.5
+/ NOTE .vtidb.wdbtypes is qualified deliberately - inside select or exec an unqualified name
+/ resolves in the root namespace
 writerhpups:{[]
   @[{[] exec hpup from .servers.SERVERS where proctype in .vtidb.wdbtypes, not null hpup};
     (::);{[e] .lg.w[`vtidb;"could not read .servers.SERVERS: ",e]; 0#`}]
   };
 
-/ credentials, the way .servers does it - a bare :host:port gets USERPASS appended. Without
-/ them every query is refused and the trap reads that as "no writers"
+/ credentials, the way .servers does it - a bare :host:port gets USERPASS appended
 writerconn:{[hp]
   u:@[{.servers.USERPASS^.servers.PASSWORDS x};hp;`];
   $[(null u) or 2<sum ":"=string hp; hp; hsym `$(string hp),":",string u]
@@ -179,8 +157,7 @@ livepartitions:{[]
     } each hps
   };
 
-/ off: the newest date on disk, never behind current. On: the earliest partition any writer
-/ still has open, so the first stack to roll cannot freeze a date another is filling. §8.3
+/ off: the newest date on disk. On: the earliest partition any writer still has open. §8.3
 livepart:{[ds]
   base:$[count ds; max current,"D"$string last ds; current];
   if[not multiwriter; :base];
@@ -193,12 +170,11 @@ livepart:{[ds]
   held
   };
 
-/ discard the whole cache, so the next rebuild rescans every date. The manual recovery path
-/ for a directory added to a past date. Not needed after compression. §6.1, §7.1
+/ discard the whole cache, so the next rebuild rescans every date. §6.1, §7.1
 dropcache:{[] parts::(`$())!(); opened::(`$())!(); };
 
-/ forget specific dates, so the next rebuild rescans only those - end of day is then
-/ O(instruments), not O(history). parts and opened are row-aligned; filter them together
+/ forget specific dates, so the next rebuild rescans only those. parts and opened are
+/ row-aligned, so filter them together
 dropdates:{[ds]
   if[not count ds; :()];
   {[ds;t]
@@ -209,8 +185,7 @@ dropdates:{[ds]
   };
 
 / build one virtual table; only the live date and dates not already held are scanned. §5.3
-/ NOTE the global must land in the ROOT namespace so clients can write "select from trade" -
-/ `t set ...` inside a \d block defines .vtidb.t instead.
+/ NOTE the global must land in the ROOT namespace, or clients cannot "select from trade"
 build:{[t;ds]
   if[not count ds; .lg.w[`vtidb;"no partitions found for ",string t]; :0];
   / ds holds directory NAMES as symbols; the catalogue holds real dates. keep both.
@@ -239,12 +214,10 @@ build:{[t;ds]
   count m
   };
 
-/ in a healthy database every table covers the same dates, so a gap means a partition was
-/ created without one of its tables. Nothing else surfaces it. §4.6
+/ a gap means a partition was created without one of its tables. §4.6
 coverage:{[] {asc distinct exec date from x} each parts };
 
-/ WARNING do not name the local "cov" - it is a q keyword (covariance) and shadowing it
-/ gives a value error at the assignment itself
+/ WARNING do not name the local "cov" - it is a q keyword and shadowing it gives a value error
 checkcoverage:{[]
   bytab:coverage[];
   if[2>count bytab; :()];
@@ -262,8 +235,7 @@ checkcoverage:{[]
   gaps
   };
 
-/ appends need no work - every partition is a live view. The only event a reader reacts to is
-/ a directory appearing. Called by the wdb and by the backstop timer. §5.2, §4.1
+/ the only event a reader reacts to is a directory appearing; appends need no work. §5.2, §4.1
 rebuild:{[]
   if[symchanged[]; loadsym[]];           / must precede any open: the enum domain grew
   before:count each parts;
@@ -276,13 +248,10 @@ rebuild:{[]
   after
   };
 
-/ end of day. No data moves; a new date is just new directories. Only the date that just
-/ closed can still be wrong, so forget that one and keep the rest. §4.2
-/ NOTE the drop must happen BEFORE current moves, or the closed date reads as immutable and
-/ build reuses its stale catalogue.
+/ end of day. Forget the date that just closed and keep the rest. §4.2
+/ NOTE the drop must happen BEFORE current moves, or build reuses the closed date's catalogue
 rollover:{[pt]
-  / one writer announcing the new day does not mean every writer has rolled, so rescan and let
-  / a later rollover or the sweep advance instead. §8.3
+  / one writer announcing the new day does not mean every writer has rolled. §8.3
   if[multiwriter;
     ps:livepartitions[];
     if[count ps;
@@ -304,10 +273,8 @@ rollover:{[pt]
 / startup
 / ---------------------------------------------------------------------------
 
-/ find the writer and register. Not required - the sweep keeps the reader current - but it
-/ turns new-partition latency from one sweep into under a second. §4.1
-/ NOTE the arguments go in @'s second slot, not a projection: @[f[a;b];::;h] applies f OUTSIDE
-/ the trap, so a failure there is never caught.
+/ find the writer and register, so a new partition does not wait for the sweep. §4.1
+/ NOTE the arguments go in @'s second slot - @[f[a;b];::;h] applies f outside the trap
 findwdb:{[]
   h:@[{[a] .servers.startupdepcycles . a; .servers.gethandlebytype[first a;`any]};
      (wdbtypes;wdbconnsleepintv;wdbcheckcycles);
@@ -317,8 +284,7 @@ findwdb:{[]
                  "partitions will be picked up by the ",string[sweep]," sweep"];
     :()];
   w:first h;
-  / a failed read leaves current where livepart put it. it must NOT fall back to .z.D - see
-  / livepart for why that freezes the live partition for the rest of the day
+  / a failed read leaves current where livepart put it; it must NOT fall back to .z.D
   pt:@[w;(value;`.wdb.currentpartition);{[e] .lg.w[`vtidb;"could not read the wdb partition: ",e]; 0Nd}];
   if[not null pt; current::pt];
   @[w;(`.servers.registerfromdiscovery;`idb;0b);{.lg.e[`vtidb;"registration with the wdb failed: ",x]}];
@@ -329,8 +295,7 @@ init:{[]
   .lg.o[`vtidb;"scanning roots ",.Q.s1 roots];
   loadsym[];
   symsize::symbytes[];
-  / current is left null: the first rebuild sets it from disk (livepart), and findwdb below
-  / replaces it with the writer's own answer if there is a writer to ask
+  / current is left null: the first rebuild sets it from disk, findwdb then refines it
   n:rebuild[];                            / cache is empty, so this one scans everything
   .lg.o[`vtidb;"attached ",(.Q.s1 n)," across ",(.Q.s1 count distinct raze {exec date from x} each value parts)," date(s)"];
   findwdb[];                              / replaces current with the writer's actual partition
@@ -342,8 +307,7 @@ init:{[]
 
 \d .
 
-/ tables[] does not see virtual tables - they are type 112h, not 98h - so the attribute
-/ has to come from our own catalogue
+/ tables[] does not see virtual tables (112h, not 98h), so the attribute comes from the catalogue
 .proc.getattributes:{`partition`tables!(.vtidb.current;key .vtidb.parts)};
 
 .vtidb.init[];

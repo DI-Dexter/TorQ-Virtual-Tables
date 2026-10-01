@@ -1,12 +1,7 @@
-/ Virtual-table capture pack : WDB overlay. Sections 4.1, 4.2, 4.5, 4.6 of
+/ Virtual-table capture pack : WDB overlay. §4.1, §4.2, §4.5, §4.6 of
 / docs/virtual-table-capture-pack.md.
-/ .
-/ This file loads BEFORE the stock code/processes/wdb.q, so anything defined directly would
-/ be clobbered. Everything is named privately and swapped in from .proc.initlist, which runs
-/ last.
-/ .
-/ NOTE a line containing only "/" opens a block comment in q, so every comment line here
-/ carries text after the slash.
+/ Loads BEFORE the stock code/processes/wdb.q, so everything is named privately and swapped
+/ in from .proc.initlist, which runs last.
 
 \d .wdb
 
@@ -16,18 +11,16 @@ vtnew:();
 / this stack's enumeration domain; the default keeps stock behaviour. §8.3.1
 symdomain:@[value;`symdomain;`sym];
 
-/ TorQ's directory-name sanitiser, factored out of upserttopartition so the fill logic
-/ below builds identical names. non-alphanumerics become "_", nulls become TORQNULLSYMBOL.
-/ WARNING lossy - EUR-USD and EUR_USD collapse into the same directory
+/ TorQ's directory-name sanitiser, factored out of upserttopartition so the fill logic builds
+/ identical names. WARNING lossy - EUR-USD and EUR_USD collapse into the same directory
 vtdirname:{[expt] `$"_"^.Q.an .Q.an?"_" sv string `TORQNULLSYMBOL^ensuresymlist[expt]};
 
 / the schema a partition directory should have: the table minus its partition column(s),
 / because those are carried by the directory name. §4.5
 vtschema:{[t;expttype] ![0#value t;();0b;expttype]};
 
-/ write the data without the partition column - a column inside the files can never be
-/ used to skip directories, so leaving sym in would make every query on it scan everything.
-/ Also records directories that did not exist beforehand, for 4.6.
+/ write the data without the partition column, and record directories that did not exist
+/ beforehand. §4.5, §4.6
 vtupserttopartition:{[dir;tablename;tabdata;pt;expttype;expt;writedownmode]
   base:` sv .Q.par[dir;pt;tablename],vtdirname[expt];
   if[()~key base; vtnew,:enlist (pt;expt)];
@@ -48,10 +41,9 @@ vtfill:{[pt;expt]
     }[pt;expt] each tablelist[];
   };
 
-/ notify readers about NEW partitions only; appends need none. Fill every table's directory
-/ before notifying, or a reader can rebuild against a half-created partition. §4.1, §4.6
-/ NOTE `pending` covers a tickerplant log replay, which never reaches this function -
-/ replaymaxrowcheck calls savetables directly, so vtnew must not be cleared unconditionally.
+/ notify readers about NEW partitions only. Fill every table's directory before notifying,
+/ or a reader can rebuild against a half-created partition. §4.1, §4.6
+/ NOTE vtnew must not be cleared unconditionally - a log replay never reaches this function
 vtsavetodisk:{[]
   pending:vtnew;                                     / anything a replay's direct calls left
   vtnew::();                                         / edge-triggered: only this flush counts
@@ -78,9 +70,8 @@ applysymdomain:{[]
   .Q.en:{[dom;d;t] .Q.ens[d;t;dom]}[symdomain];
   };
 
-/ the overrides must be installed before the tickerplant log is replayed, and addinitlist is
-/ too late: wdb.q calls startup[] at the bottom of its own file. Wrapping startup works where
-/ redefining anything wdb.q owns would not. §4.7
+/ the overrides must be installed before the log is replayed, and addinitlist is too late:
+/ wdb.q calls startup[] at the bottom of its own file. §4.7
 origstartup:startup;
 startup:{[]
   applyvtwrite[];
@@ -91,8 +82,7 @@ startup:{[]
 / wrapper above covers the replay path, this covers a writer that never subscribes. Idempotent.
 applyvtwrite:{[]
   .lg.o[`vtwrite;"installing virtual-table capture overrides (4.1, 4.2, 4.5, 4.6)"];
-  / one directory per writer, so hdbdir is always savedir. An override can move one without
-  / the other, and hdbdir is where .Q.en writes the domain file.
+  / one directory per writer, so hdbdir follows savedir - it is where .Q.en writes the domain
   if[not hdbdir~savedir;
     .lg.o[`vtwrite;"hdbdir follows savedir: ",(string hdbdir)," -> ",string savedir];
     hdbdir::savedir];

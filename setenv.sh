@@ -4,19 +4,14 @@
 # torq.sh sources this through the SETENV variable, so pass SETENV=<this file> when
 # calling it. Sourcing it by hand is also how the test files expect to be run.
 #
-# This is an application overlay: it supplies config and code that layer on top of a
-# TorQ checkout, which supplies the framework and process code.
-#
-# Only TORQHOME below should ever need editing. Everything else derives from it and
-# from the location of this file, so the pack can be cloned anywhere.
+# An application overlay: config and code layered on top of a TorQ checkout.
+# Only TORQHOME below should ever need editing; everything else derives from it and from
+# the location of this file.
 
 # --- inside an installed tree ------------------------------------------------
-# installlatest.sh lays the pack out as deploy/TorQApp/<version>/<pack>/ and writes the real
-# paths into deploy/bin/setenv.sh, a copy of this file. This copy is never rewritten, so a script
-# run from the installed pack - selftest.sh, regress.sh, compress.sh - would get an empty TorQ
-# location and a var/ database that nothing writes to. Defer to the rewritten copy instead.
-# The depth is checked exactly, and deploy/bin/torq.sh must sit beside it, so a clone that
-# merely lives under a directory called TorQApp is left alone.
+# installlatest.sh writes the real paths into deploy/bin/setenv.sh, a copy of this file; this
+# copy is never rewritten, so defer to that one. The depth is checked exactly and
+# deploy/bin/torq.sh must sit beside it, so a clone under a TorQApp directory is left alone.
 _vtphys="$(cd -P "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 case "${_vtphys#*/TorQApp/}" in
   "$_vtphys"|*/*/*) ;;                                  # not under TorQApp, or too deep
@@ -33,14 +28,12 @@ esac
 unset _vtphys _vtroot
 
 # --- the two roots -----------------------------------------------------------
-# TorQ core: the checkout that contains torq.q, code/ and config/. There is no sensible
-# default, so either export TORQHOME before sourcing this file or fill in the path below.
-# compress.sh checks it and stops with a clear message if it is wrong.
+# TorQ core: the checkout that contains torq.q, code/ and config/. Export it before sourcing
+# this file, or fill in the path below.
 export TORQHOME="${TORQHOME:-}"
 
-# warn when sourced by hand - the test headers say ". ./setenv.sh && q testfiles/<x>.q", and
-# without this an unset TORQHOME turns KDBCODE into "/code" and the failure is a load error
-# deep inside a test rather than anything pointing back here.
+# warn when sourced by hand - an unset TORQHOME turns KDBCODE into "/code", and the failure
+# then surfaces as a load error deep inside a test.
 if [ ! -f "${TORQHOME}/torq.q" ]; then
   echo "setenv.sh: WARNING - no torq.q under TORQHOME=${TORQHOME:-<unset>}" >&2
   echo "setenv.sh:           set TORQHOME to your TorQ checkout, or edit this file" >&2
@@ -72,9 +65,8 @@ export KDBAPPCODE="${TORQAPPHOME}/code"
 #   VTSTACKS=3 VTIDBS=2 ./deploy/bin/torq.sh start all
 #
 # Both are remembered in $TORQDATAHOME, so stop and summary see the same processes as start.
-# Anything other than 1x1 is generated into $TORQDATAHOME/process-generated.csv; the shipped
-# appconfig/process.csv is used as-is for 1x1. Ports: stack i at +100*(i-1) with tickerplant
-# +0, writer +5, feed +14; reader j at +30 of block j; discovery +1, compression +40.
+# Anything other than 1x1 is generated into $TORQDATAHOME/process-generated.csv. Ports: stack i
+# at +100*(i-1) with tickerplant +0, writer +5, feed +14; reader j at +30 of block j.
 _vtsfile="${TORQDATAHOME}/.vtstacks"
 _vtifile="${TORQDATAHOME}/.vtidbs"
 if [ -z "${VTSTACKS:-}" ] && [ -r "$_vtsfile" ]; then VTSTACKS="$(cat "$_vtsfile" 2>/dev/null)"; fi
@@ -85,10 +77,9 @@ case "$VTSTACKS" in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTSTACKS='${VTSTAC
 case "$VTIDBS"   in ''|*[!0-9]*|0) echo "setenv.sh: WARNING - VTIDBS='${VTIDBS}' is not a positive integer, using 1" >&2;   VTIDBS=1 ;; esac
 export VTSTACKS VTIDBS
 
-# A reader holds about 3 connections per capture stack. Where the licence caps connections,
-# a reader past the cap keeps capturing but refuses clients with 'conn. The cap is read from
-# the licence rather than assumed: .Q.lim[] gives conns as a number on a capped licence and
-# as a cur/lim row on an uncapped one, which is what the type test below is for.
+# A reader holds about 3 connections per capture stack, and past the licence cap it keeps
+# capturing but refuses clients with 'conn. .Q.lim[] gives conns as a number on a capped
+# licence and as a cur/lim row on an uncapped one, hence the type test.
 if [ "$VTSTACKS" -ge 3 ] && command -v "${QCMD:-q}" >/dev/null 2>&1; then
   _vtneed=$(( 3 * VTSTACKS + 1 ))
   _vtcap=$("${QCMD:-q}" -q 2>/dev/null <<'VTLIMEOF'
@@ -173,9 +164,8 @@ fi
 unset _vtsfile _vtifile
 
 # --- data and logs -----------------------------------------------------------
-# ONE directory for the database. No separate wdb/hdb areas: the writer writes where
-# the readers read, and nothing moves at end of day. KDBHDB and KDBWDB are kept as
-# aliases because TorQ core and the stock settings read them by name.
+# ONE directory for the database: the writer writes where the readers read. KDBHDB and KDBWDB
+# are kept as aliases because TorQ core and the stock settings read them by name.
 export KDBDB="${TORQDATAHOME}/db"
 export KDBWDB="${KDBDB}"
 export KDBHDB="${KDBDB}"

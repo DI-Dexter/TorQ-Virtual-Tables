@@ -1,16 +1,7 @@
 / Virtual-table capture pack : bind this writer to ONE named tickerplant. §8.3
 / Inert unless .wdb.tickerplantname is set.
-/ .
-/ wdb.q subscribes with a filter on process type and none on name, then takes the first row -
-/ a coin toss with several tickerplants, and a writer on the wrong one captures the other
-/ stack's instruments while looking healthy.
-/ .
-/ .sub.getsubscriptionhandles already accepts a procname filter that wdb.q never passes, so it
-/ is wrapped below - here rather than from .proc.initlist, because wdb.q calls startup[] at the
-/ bottom of its own file.
-/ .
-/ NOTE a line containing only "/" opens a block comment in q, so every comment line here carries
-/ text after the slash.
+/ wdb.q filters subscription handles on process type but never on name, so
+/ .sub.getsubscriptionhandles is wrapped below to pass the name through.
 
 \d .wdb
 

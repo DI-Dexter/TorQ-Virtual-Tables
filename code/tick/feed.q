@@ -1,22 +1,15 @@
 / Market-data feed, following the Finance Starter Pack generator.
-/ .
 / Publishes trades and quotes for a small equity universe, with skewed volumes so partition
 / sizes vary the way they do in real data.
-/ .
 / Configured by environment:
 /   REPLAYINTERVAL   time between publishes (default 200ms)
-/ .
-/ NOTE a line containing only "/" opens a block comment in q, so every comment line here
-/ carries text after the slash.
 
 REPLAYINTERVAL:@[value;`REPLAYINTERVAL;0D00:00:00.200];
 
 / the instrument universe. Stack i of n takes every instrument whose index is congruent to
-/ i-1 mod n, so the slices are disjoint by arithmetic rather than by two lists being kept
-/ apart. §8.3
-/ .
-/ stackid, nstacks and universe are declared in appconfig/settings/feed.q - which sits inside
-/ \d .feed - so the process file can set them.
+/ i-1 mod n, so the slices are disjoint by arithmetic. §8.3
+/ stackid, nstacks and universe are declared in appconfig/settings/feed.q so the process
+/ file can set them.
 universe:@[value;`.feed.universe;`AMD`AIG`AAPL`DELL`DOW`GOOG`HPQ`INTC`IBM`MSFT,
                                  `BARC`HSBA`LLOY`NWG`STAN`VOD`BP`SHEL`GSK`AZN];
 vtslice:{[u;id;n]
@@ -94,15 +87,12 @@ mkquote:{[n]
    n?modes; exch i; n?srcs)
   };
 
-/ 8.3.2 - which tickerplant to publish to. ` takes whichever one is found first, which is right
-/ with one stack and a coin toss with two. Declared in appconfig/settings/feed.q so the process
-/ file's extras column can override it (-.feed.tickerplantname stp2).
+/ which tickerplant to publish to; ` takes whichever one is found first. Declared in
+/ appconfig/settings/feed.q so the process file can override it. §8.3
 tpname:@[value;`.feed.tickerplantname;`];
 
-/ Resolve the handle on every publish rather than caching one at startup: a cached handle dies
-/ with the tickerplant, and .servers reconnecting updates its own table, not a copy of it.
-/ Both branches return an empty int list rather than a null handle, because send tests count
-/ and `first` on an empty column would give 0Ni, which counts 1.
+/ resolve the handle on every publish rather than caching one: a cached handle dies with the
+/ tickerplant. Both branches return an empty int list, not a null handle - send tests count
 tphandle:{[]
   if[null tpname; :.servers.gethandlebytype[`segmentedtickerplant;`any]];
   r:.servers.getservers[`procname;tpname;()!();1b;1b];

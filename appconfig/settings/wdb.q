@@ -16,10 +16,8 @@ sorttypes:sortworkertypes:()
 idbtypes:`idb
 permitreload:0b                          // nothing to reload
 sortcsv:hsym`$getenv[`KDBAPPCONFIG],"/sort.csv"
-// Seed the partition from the business date. TorQ seeds it from .proc.cd[], the calendar
-// date, which disagrees under a roll offset - and clearwdbdata[] deletes whatever it says.
-//
-// NOTE .eodtime is not loaded when this file runs, so the lookup sits inside the function.
+// Seed the partition from the business date, not .proc.cd[], which disagrees under a roll
+// offset. NOTE .eodtime is not loaded when this file runs, so the lookup sits in the function.
 startpartition:{[]
   d:@[{[x] .eodtime.getday .z.p};(::);{[e] .proc.cd[]}];
   (`date^@[value;`.wdb.partitiontype;`date])$d
@@ -27,10 +25,9 @@ startpartition:{[]
 
 getpartition:{[] @[value;`.wdb.currentpartition;{[e] .wdb.startpartition[]}]};
 
-tickerplantname:`                        // 8.3 - pin this writer to one tickerplant by name;
-                                         // ` takes whichever is found first. Set from the
-                                         // process file, but declared here so the override
-                                         // has something to override
+tickerplantname:`                        // pin this writer to one tickerplant by name; `
+                                         // takes whichever is found first. Declared here so
+                                         // the process file has something to override. §8.3
 
 symdomain:`sym                           // this stack's enumeration domain file. One name per
                                          // root; set by setenv.sh when VTSTACKS>1. §8.3.1

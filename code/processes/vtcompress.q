@@ -2,8 +2,7 @@
 // see docs/virtual-table-capture-pack.md §4.4 and §7
 //
 // Replaces code/processes/compression.q: same job - walk the tree, compress anything older
-// than minage, exit - but first corrects the directory classifier, which cannot see a
-// date+instrument layout.
+// than minage, exit - but first corrects the directory classifier. §4.4
 //
 //   ./compress.sh              compress
 //   ./compress.sh --dry-run    report what would be compressed, change nothing
@@ -19,17 +18,13 @@ dryrun:`dryrun in key .proc.params;
 // how ./compress.sh --test exercises the job against a database only a couple of days old
 if[count e:getenv`VTCMP_CONFIG; inputcsv:e];
 
-// The size gate. A column file already inside one filesystem block frees nothing when
-// compressed and only adds decompression work to every read; at this layout a third of all
-// files are in that state and free 0% of disk (§7.2). 0 disables the gate, as stock does.
+// The size gate. A file already inside one filesystem block frees nothing when compressed.
+// 0 disables the gate, as stock does. §7.2
 minfilesize:@[value;`minfilesize;4096];
 if[count e:getenv`VTCMP_MINFILESIZE; minfilesize:"J"$e];
 
-// Stock hdbstructure classifies a path by depth and does not know about the instrument level,
-// so showcomp drops every row. The extra depth folds that level away. §4.4
-//
-// Must be applied here, not in appconfig/settings/compression.q: settings load before
-// code/common/compress.q, so an override there is overwritten by the stock definition.
+// Stock hdbstructure classifies a path by depth and does not know about the instrument level.
+// Must be applied here, not in settings: those load before code/common/compress.q. §4.4
 hdbstructure:{
   t:([]fullpath:(raze/)traverse x);
   base:count "/" vs string x;
@@ -47,9 +42,7 @@ hdbstructure:{
   delete splitcount,split from t
   };
 
-// The --dry-run report. The interesting number is not how many files are in scope but how big
-// they are: a column file already inside one filesystem block cannot get smaller on disk however
-// well its bytes compress.
+// The --dry-run report: total bytes in scope, not just the file count. §7.2
 dryrunreport:{[t]
   fsblock:4096;                                     // ext4 default: the floor on any file's disk usage
   alloc:{[b;x] b*ceiling x%b}[fsblock];             // bytes actually allocated for a file of x bytes
